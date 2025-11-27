@@ -1,16 +1,22 @@
 package com.canvify.test.service.profile;
 
 import com.canvify.test.dto.profile.AddressDTO;
-import com.canvify.test.model.ApiResponse;
-import com.canvify.test.request.AddressRequest;
+import com.canvify.test.request.profile.AddressRequest;
 import com.canvify.test.security.CustomUserDetails;
-import org.springframework.http.ResponseEntity;
 
 import java.util.List;
 
 public interface AddressService {
+
+    // GET all addresses for logged-in user
     List<AddressDTO> getAddresses(CustomUserDetails currentUser);
-    ResponseEntity<ApiResponse<?>> addAddress(CustomUserDetails currentUser, AddressRequest addressRequest);
-    ResponseEntity<ApiResponse<?>> updateAddress(Long addressId, AddressRequest addressRequest);
-    ResponseEntity<ApiResponse<?>> deleteAddress(Long addressId);
+
+    // ADD new address
+    AddressDTO addAddress(CustomUserDetails currentUser, AddressRequest request);
+
+    // UPDATE existing address
+    AddressDTO updateAddress(Long addressId, CustomUserDetails currentUser, AddressRequest request);
+
+    // DELETE address
+    void deleteAddress(Long addressId, CustomUserDetails currentUser);
 }

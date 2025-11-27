@@ -3,14 +3,11 @@ package com.canvify.test.service.profile;
 import com.canvify.test.dto.profile.AddressDTO;
 import com.canvify.test.entity.Address;
 import com.canvify.test.entity.User;
-import com.canvify.test.model.ApiResponse;
 import com.canvify.test.repository.AddressRepository;
 import com.canvify.test.repository.UserRepository;
-import com.canvify.test.request.AddressRequest;
+import com.canvify.test.request.profile.AddressRequest;
 import com.canvify.test.security.CustomUserDetails;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -27,96 +24,86 @@ public class AddressServiceImpl implements AddressService {
 
     @Override
     public List<AddressDTO> getAddresses(CustomUserDetails currentUser) {
-        List<Address> addresses = addressRepository.findByUserId(currentUser.getId());
-        return addresses.stream()
+        return addressRepository.findByUserIdAndBitDeletedFlagFalse(currentUser.getId())
+                .stream()
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
     }
 
     @Override
-    public ResponseEntity<ApiResponse<?>> addAddress(CustomUserDetails currentUser, AddressRequest addressRequest) {
+    public AddressDTO addAddress(CustomUserDetails currentUser, AddressRequest request) {
         User user = userRepository.findById(currentUser.getId())
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
-        Address address = convertToEntity(addressRequest);
+        Address address = convertToEntity(request);
         address.setUser(user);
-        addressRepository.save(address);
 
-        ApiResponse<AddressDTO> response = ApiResponse.<AddressDTO>builder()
-                .statusCode(HttpStatus.CREATED.value())
-                .message("Address added successfully")
-                .data(convertToDTO(address))
-                .build();
-        return new ResponseEntity<>(response, HttpStatus.CREATED);
+        return convertToDTO(addressRepository.save(address));
     }
 
     @Override
-    public ResponseEntity<ApiResponse<?>> updateAddress(Long addressId, AddressRequest addressRequest) {
+    public AddressDTO updateAddress(Long addressId, CustomUserDetails currentUser, AddressRequest request) {
+
         Address address = addressRepository.findById(addressId)
                 .orElseThrow(() -> new RuntimeException("Address not found"));
 
-        // Manual mapping from request to entity
-        address.setFullName(addressRequest.getFullName());
-        address.setMobile(addressRequest.getMobile());
-        address.setPincode(addressRequest.getPincode());
-        address.setCity(addressRequest.getCity());
-        address.setState(addressRequest.getState());
-        address.setAddressLine1(addressRequest.getAddressLine1());
-        address.setAddressLine2(addressRequest.getAddressLine2());
-        address.setLandmark(addressRequest.getLandmark());
-        address.setAddressType(addressRequest.getAddressType());
+        if (!address.getUser().getId().equals(currentUser.getId())) {
+            throw new RuntimeException("Unauthorized access");
+        }
 
-        Address updatedAddress = addressRepository.save(address);
+        address.setFullName(request.getFullName());
+        address.setMobile(request.getMobile());
+        address.setPincode(request.getPincode());
+        address.setCity(request.getCity());
+        address.setState(request.getState());
+        address.setAddressLine1(request.getAddressLine1());
+        address.setAddressLine2(request.getAddressLine2());
+        address.setLandmark(request.getLandmark());
+        address.setAddressType(request.getAddressType());
 
-        ApiResponse<AddressDTO> response = ApiResponse.<AddressDTO>builder()
-                .statusCode(HttpStatus.OK.value())
-                .message("Address updated successfully")
-                .data(convertToDTO(updatedAddress))
-                .build();
-        return new ResponseEntity<>(response, HttpStatus.OK);
+        return convertToDTO(addressRepository.save(address));
     }
 
     @Override
-    public ResponseEntity<ApiResponse<?>> deleteAddress(Long addressId) {
+    public void deleteAddress(Long addressId, CustomUserDetails currentUser) {
         Address address = addressRepository.findById(addressId)
                 .orElseThrow(() -> new RuntimeException("Address not found"));
+
+        if (!address.getUser().getId().equals(currentUser.getId())) {
+            throw new RuntimeException("Unauthorized access");
+        }
 
         address.setBitDeletedFlag(true);
         addressRepository.save(address);
-
-        ApiResponse<?> response = ApiResponse.builder()
-                .statusCode(HttpStatus.OK.value())
-                .message("Address deleted successfully")
-                .build();
-        return new ResponseEntity<>(response, HttpStatus.OK);
     }
 
     private AddressDTO convertToDTO(Address address) {
-        AddressDTO addressDTO = new AddressDTO();
-        addressDTO.setId(address.getId());
-        addressDTO.setFullName(address.getFullName());
-        addressDTO.setMobile(address.getMobile());
-        addressDTO.setPincode(address.getPincode());
-        addressDTO.setCity(address.getCity());
-        addressDTO.setState(address.getState());
-        addressDTO.setAddressLine1(address.getAddressLine1());
-        addressDTO.setAddressLine2(address.getAddressLine2());
-        addressDTO.setLandmark(address.getLandmark());
-        addressDTO.setAddressType(address.getAddressType());
-        return addressDTO;
+        AddressDTO dto = new AddressDTO();
+        dto.setId(address.getId());
+        dto.setFullName(address.getFullName());
+        dto.setMobile(address.getMobile());
+        dto.setPincode(address.getPincode());
+        dto.setCity(address.getCity());
+        dto.setState(address.getState());
+        dto.setAddressLine1(address.getAddressLine1());
+        dto.setAddressLine2(address.getAddressLine2());
+        dto.setLandmark(address.getLandmark());
+        dto.setAddressType(address.getAddressType());
+        return dto;
     }
 
-    private Address convertToEntity(AddressRequest addressRequest) {
+    private Address convertToEntity(AddressRequest request) {
         Address address = new Address();
-        address.setFullName(addressRequest.getFullName());
-        address.setMobile(addressRequest.getMobile());
-        address.setPincode(addressRequest.getPincode());
-        address.setCity(addressRequest.getCity());
-        address.setState(addressRequest.getState());
-        address.setAddressLine1(addressRequest.getAddressLine1());
-        address.setAddressLine2(addressRequest.getAddressLine2());
-        address.setLandmark(addressRequest.getLandmark());
-        address.setAddressType(addressRequest.getAddressType());
+        address.setFullName(request.getFullName());
+        address.setMobile(request.getMobile());
+        address.setPincode(request.getPincode());
+        address.setCity(request.getCity());
+        address.setState(request.getState());
+        address.setAddressLine1(request.getAddressLine1());
+        address.setAddressLine2(request.getAddressLine2());
+        address.setLandmark(request.getLandmark());
+        address.setAddressType(request.getAddressType());
         return address;
     }
 }
+

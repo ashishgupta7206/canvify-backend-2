@@ -1,4 +1,4 @@
-package com.canvify.test.request;
+package com.canvify.test.request.profile;
 
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;

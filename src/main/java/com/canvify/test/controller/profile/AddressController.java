@@ -1,7 +1,8 @@
 package com.canvify.test.controller.profile;
 
 import com.canvify.test.dto.profile.AddressDTO;
-import com.canvify.test.request.AddressRequest;
+import com.canvify.test.model.ApiResponse;
+import com.canvify.test.request.profile.AddressRequest;
 import com.canvify.test.security.CustomUserDetails;
 import com.canvify.test.service.profile.AddressService;
 import jakarta.validation.Valid;
@@ -25,17 +26,44 @@ public class AddressController {
     }
 
     @PostMapping
-    public ResponseEntity<?> addAddress(@AuthenticationPrincipal CustomUserDetails currentUser, @Valid @RequestBody AddressRequest addressRequest) {
-        return addressService.addAddress(currentUser, addressRequest);
+    public ResponseEntity<?> addAddress(@AuthenticationPrincipal CustomUserDetails currentUser,
+                                        @Valid @RequestBody AddressRequest request) {
+
+        return ResponseEntity.ok(
+                ApiResponse.builder()
+                        .statusCode(201)
+                        .message("Address added successfully")
+                        .data(addressService.addAddress(currentUser, request))
+                        .build()
+        );
     }
 
     @PutMapping("/{addressId}")
-    public ResponseEntity<?> updateAddress(@PathVariable Long addressId, @Valid @RequestBody AddressRequest addressRequest) {
-        return addressService.updateAddress(addressId, addressRequest);
+    public ResponseEntity<?> updateAddress(@AuthenticationPrincipal CustomUserDetails currentUser,
+                                           @PathVariable Long addressId,
+                                           @Valid @RequestBody AddressRequest request) {
+
+        return ResponseEntity.ok(
+                ApiResponse.builder()
+                        .statusCode(200)
+                        .message("Address updated successfully")
+                        .data(addressService.updateAddress(addressId, currentUser, request))
+                        .build()
+        );
     }
 
     @DeleteMapping("/{addressId}")
-    public ResponseEntity<?> deleteAddress(@PathVariable Long addressId) {
-        return addressService.deleteAddress(addressId);
+    public ResponseEntity<?> deleteAddress(@AuthenticationPrincipal CustomUserDetails currentUser,
+                                           @PathVariable Long addressId) {
+
+        addressService.deleteAddress(addressId, currentUser);
+
+        return ResponseEntity.ok(
+                ApiResponse.builder()
+                        .statusCode(200)
+                        .message("Address deleted successfully")
+                        .build()
+        );
     }
 }
+

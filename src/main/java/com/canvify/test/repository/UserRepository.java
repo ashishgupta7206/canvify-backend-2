@@ -17,5 +17,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
     boolean existsByMobileNumber(String mobileNumber);
     @Query("SELECT u FROM User u ORDER BY u.id DESC LIMIT 1")
     Optional<User> findTopByOrderByIdDesc();
+    boolean existsByEmailAndIdNot(String email, Long id);
+
+    boolean existsByMobileNumberAndIdNot(String mobileNumber, Long id);
 
 }

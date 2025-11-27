@@ -1,6 +1,7 @@
 package com.canvify.test;
 
-import com.canvify.test.entity.audit.AuditorAwareImpl;
+
+import com.canvify.test.config.AuditorAwareImpl;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
