@@ -24,8 +24,12 @@ public class AuthController {
 
     // REGISTRATION
     @PostMapping("/register")
-    public ApiResponse<?> register(@Valid @RequestBody RegistrationRequest request) {
-        return authService.register(request);
+    public ResponseEntity<ApiResponse<?>> register(@Valid @RequestBody RegistrationRequest request) {
+        ApiResponse<?> response = authService.register(request);
+        if (response.isSuccess()) {
+            return ResponseEntity.ok(response);
+        }
+        return ResponseEntity.badRequest().body(response);
     }
 
     // PASSWORD LOGIN
@@ -36,8 +40,8 @@ public class AuthController {
 
     // SEND OTP
     @PostMapping("/otp/send")
-    public ApiResponse<?> sendOtp(@Valid @RequestBody OtpRequest request) {
-        return authService.sendOtp(request);
+    public ResponseEntity<ApiResponse<?>> sendOtp(@Valid @RequestBody OtpRequest request) {
+        return ResponseEntity.ok(authService.sendOtp(request));
     }
 
     // OTP LOGIN
@@ -46,4 +50,3 @@ public class AuthController {
         return authService.otpLogin(request);
     }
 }
-

@@ -1,9 +1,11 @@
 package com.canvify.test.entity;
 
 import com.canvify.test.entity.audit.Auditable;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
@@ -14,6 +16,7 @@ import java.time.LocalDateTime;
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
+@EqualsAndHashCode(callSuper = true)
 public class Refund extends Auditable {
 
     @Id
@@ -22,10 +25,12 @@ public class Refund extends Auditable {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "payment_id")
+    @JsonIgnore
     private Payment payment;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "return_id")
+    @JsonIgnore
     private Return returnRequest;
 
     @Column(name = "refund_reference_id")
@@ -37,6 +42,6 @@ public class Refund extends Auditable {
     @Column(name = "refund_date")
     private LocalDateTime refundDate;
 
-    @Column(name = "status", length = 50)
-    private String status;
+    @Enumerated(EnumType.STRING)
+    private PaymentStatus status;
 }

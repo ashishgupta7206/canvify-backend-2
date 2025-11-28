@@ -1,16 +1,22 @@
 package com.canvify.test.entity;
 
 import com.canvify.test.entity.audit.Auditable;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
+import com.canvify.test.enums.ProductStatus;
 
 @Entity
-@Table(name = "m_product")
+@Table(name = "m_product", indexes = {
+        @Index(name = "idx_product_slug", columnList = "slug")
+})
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
+@EqualsAndHashCode(callSuper = true)
 public class Product extends Auditable {
 
     @Id
@@ -19,12 +25,13 @@ public class Product extends Auditable {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "category_id")
+    @JsonIgnore
     private Category category;
 
-    @Column(name = "name")
+    @Column(name = "name", nullable = false)
     private String name;
 
-    @Column(name = "slug")
+    @Column(name = "slug", unique = true)
     private String slug;
 
     @Column(name = "short_description", length = 500)
@@ -36,6 +43,7 @@ public class Product extends Auditable {
     @Column(name = "main_image", length = 500)
     private String mainImage;
 
-    @Column(name = "status")
-    private Short status;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", length = 20, nullable = false)
+    private ProductStatus status = ProductStatus.DRAFT;
 }

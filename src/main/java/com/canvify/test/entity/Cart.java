@@ -2,13 +2,13 @@ package com.canvify.test.entity;
 
 import com.canvify.test.entity.audit.Auditable;
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
-import lombok.NoArgsConstructor;
+import lombok.*;
 
 @Entity
-@Table(name = "t_cart")
+@Table(name = "t_cart", indexes = {
+        @Index(name = "idx_cart_user", columnList = "user_id"),
+        @Index(name = "idx_cart_token", columnList = "cart_token")
+})
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
@@ -19,7 +19,18 @@ public class Cart extends Auditable {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @OneToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false)
+    // If logged-in user
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id")
     private User user;
+
+    // If guest user, cart_token is used
+    @Column(name = "cart_token", unique = true, length = 200)
+    private String cartToken;
+
+    @Column(name = "total_items")
+    private Integer totalItems = 0;
+
+    @Column(name = "total_amount", precision = 10, scale = 2)
+    private Double totalAmount = 0.0;
 }

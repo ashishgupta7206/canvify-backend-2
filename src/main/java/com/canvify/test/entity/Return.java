@@ -1,9 +1,12 @@
 package com.canvify.test.entity;
 
 import com.canvify.test.entity.audit.Auditable;
+import com.canvify.test.enums.ReturnStatus;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
@@ -14,6 +17,7 @@ import java.time.LocalDateTime;
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
+@EqualsAndHashCode(callSuper = true)
 public class Return extends Auditable {
 
     @Id
@@ -22,13 +26,14 @@ public class Return extends Auditable {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "order_item_id")
-    private OrderItems orderItem;
+    @JsonIgnore
+    private OrderItem orderItem;
 
     @Column(name = "reason", columnDefinition = "TEXT")
     private String reason;
 
-    @Column(name = "return_status", length = 50)
-    private String returnStatus;
+    @Enumerated(EnumType.STRING)
+    private ReturnStatus returnStatus;
 
     @Column(name = "refund_amount", precision = 10, scale = 2)
     private BigDecimal refundAmount;
@@ -36,3 +41,4 @@ public class Return extends Auditable {
     @Column(name = "created_on")
     private LocalDateTime createdOn;
 }
+

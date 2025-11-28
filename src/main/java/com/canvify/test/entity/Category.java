@@ -1,6 +1,7 @@
 package com.canvify.test.entity;
 
 import com.canvify.test.entity.audit.Auditable;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -8,7 +9,9 @@ import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 
 @Entity
-@Table(name = "m_category")
+@Table(name = "m_category", indexes = {
+        @Index(name = "idx_category_slug", columnList = "slug")
+})
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
@@ -22,7 +25,7 @@ public class Category extends Auditable {
     @Column(name = "name", nullable = false)
     private String name;
 
-    @Column(name = "slug")
+    @Column(name = "slug", unique = true)
     private String slug;
 
     @Column(name = "description", columnDefinition = "TEXT")
@@ -30,8 +33,10 @@ public class Category extends Auditable {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "parent_id")
+    @JsonIgnore
     private Category parent;
 
     @Column(name = "image_url", length = 500)
     private String imageUrl;
 }
+

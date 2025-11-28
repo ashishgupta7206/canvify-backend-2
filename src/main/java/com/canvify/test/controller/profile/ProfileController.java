@@ -1,5 +1,6 @@
 package com.canvify.test.controller.profile;
 
+import com.canvify.test.dto.profile.ProfileDTO;
 import com.canvify.test.model.ApiResponse;
 import com.canvify.test.request.profile.ProfileRequest;
 import com.canvify.test.security.CustomUserDetails;
@@ -18,28 +19,19 @@ public class ProfileController {
     private ProfileService profileService;
 
     @GetMapping
-    public ResponseEntity<?> getProfile(@AuthenticationPrincipal CustomUserDetails currentUser) {
+    public ResponseEntity<ApiResponse<ProfileDTO>> getProfile(@AuthenticationPrincipal CustomUserDetails currentUser) {
         return ResponseEntity.ok(
-                ApiResponse.builder()
-                        .statusCode(200)
-                        .message("Profile fetched successfully")
-                        .data(profileService.getProfile(currentUser))
-                        .build()
+                ApiResponse.success(profileService.getProfile(currentUser), "Profile fetched successfully")
         );
     }
 
     @PutMapping
-    public ResponseEntity<?> updateProfile(
+    public ResponseEntity<ApiResponse<ProfileDTO>> updateProfile(
             @AuthenticationPrincipal CustomUserDetails currentUser,
             @Valid @RequestBody ProfileRequest request) {
 
         return ResponseEntity.ok(
-                ApiResponse.builder()
-                        .statusCode(200)
-                        .message("Profile updated successfully")
-                        .data(profileService.updateProfile(currentUser, request))
-                        .build()
+                ApiResponse.success(profileService.updateProfile(currentUser, request), "Profile updated successfully")
         );
     }
 }
-

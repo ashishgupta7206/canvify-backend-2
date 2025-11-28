@@ -4,15 +4,17 @@ import com.canvify.test.entity.audit.Auditable;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
-
-import java.time.LocalDateTime;
+import com.canvify.test.enums.StockChangeType;
+import com.canvify.test.enums.StockReferenceType;
 
 @Entity
 @Table(name = "t_stock_ledger")
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
+@EqualsAndHashCode(callSuper = true)
 public class StockLedger extends Auditable {
 
     @Id
@@ -20,18 +22,24 @@ public class StockLedger extends Auditable {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "product_variant_id")
+    @JoinColumn(name = "product_variant_id", nullable = false)
     private ProductVariant productVariant;
 
-    @Column(name = "change_type", length = 100)
-    private String changeType;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "change_type", length = 50, nullable = false)
+    private StockChangeType changeType;
 
-    @Column(name = "quantity_change")
+    @Column(name = "quantity_change", nullable = false)
     private Integer quantityChange;
 
-    @Column(name = "remarks", columnDefinition = "TEXT")
+    @Column(columnDefinition = "TEXT")
     private String remarks;
 
-    @Column(name = "created_on")
-    private LocalDateTime createdOn;
+    @Column(name = "reference_id")
+    private Long referenceId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "reference_type", length = 50)
+    private StockReferenceType referenceType;
 }
+

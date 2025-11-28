@@ -1,8 +1,11 @@
 package com.canvify.test.entity;
 
 import com.canvify.test.entity.audit.Auditable;
+import com.canvify.test.enums.DiscountType;
 import jakarta.persistence.*;
 import lombok.*;
+
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "m_coupon")
@@ -19,33 +22,25 @@ public class Coupon extends Auditable {
     @Column(name = "code", length = 50, nullable = false, unique = true)
     private String code;
 
-    @Column(name = "description", columnDefinition = "TEXT")
+    @Column(columnDefinition = "TEXT")
     private String description;
 
-    @Column(name = "discount_type", length = 20) // percentage/flat
-    private String discountType;
+    @Enumerated(EnumType.STRING)
+    private DiscountType discountType; // enum
 
-    @Column(name = "discount_value", precision = 10, scale = 2)
     private Double discountValue;
 
-    @Column(name = "min_order_value", precision = 10, scale = 2)
     private Double minOrderValue;
 
-    @Column(name = "max_discount", precision = 10, scale = 2)
     private Double maxDiscount;
 
-    @Column(name = "valid_from")
-    private java.time.LocalDateTime validFrom;
+    private LocalDateTime validFrom;
 
-    @Column(name = "valid_to")
-    private java.time.LocalDateTime validTo;
+    private LocalDateTime validTo;
 
-    @Column(name = "usage_limit")
     private Integer usageLimit;
 
-    @Column(name = "per_user_limit")
     private Integer perUserLimit;
 
-    @Column(name = "active_flag")
     private Boolean activeFlag;
 }

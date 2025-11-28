@@ -86,10 +86,7 @@ public class AuthServiceImpl implements AuthService {
         // TODO: Integrate SMS/Email sending
         System.out.println("OTP for " + user.getUsername() + " is " + otp);
 
-        return ApiResponse.builder()
-                .statusCode(200)
-                .message("OTP sent successfully")
-                .build();
+        return ApiResponse.success(null, "OTP sent successfully");
     }
 
     // ------------------------
@@ -136,10 +133,10 @@ public class AuthServiceImpl implements AuthService {
     public ApiResponse<?> register(RegistrationRequest req) {
 
         if (userRepository.existsByEmail(req.getEmail()))
-            return ApiResponse.builder().statusCode(400).message("Email already in use").build();
+            return ApiResponse.error("Email already in use");
 
         if (userRepository.existsByMobileNumber(req.getMobileNumber()))
-            return ApiResponse.builder().statusCode(400).message("Mobile already in use").build();
+            return ApiResponse.error("Mobile already in use");
 
         // AUTO-GENERATE USERNAME: AURA001
         String last = userRepository.findTopByOrderByIdDesc()
@@ -162,12 +159,6 @@ public class AuthServiceImpl implements AuthService {
 
         userRepository.save(user);
 
-        return ApiResponse.builder()
-                .statusCode(200)
-                .message("User registered successfully")
-                .build();
+        return ApiResponse.success(null, "User registered successfully");
     }
 }
-
-
-

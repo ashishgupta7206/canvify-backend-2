@@ -1,18 +1,24 @@
 package com.canvify.test.entity;
 
 import com.canvify.test.entity.audit.Auditable;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 
 @Entity
-@Table(name = "m_product_variant")
+@Table(name = "m_product_variant", indexes = {
+        @Index(name = "idx_variant_product", columnList = "product_id"),
+        @Index(name = "idx_variant_sku", columnList = "sku")
+})
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
+@EqualsAndHashCode(callSuper = true)
 public class ProductVariant extends Auditable {
 
     @Id
@@ -21,9 +27,10 @@ public class ProductVariant extends Auditable {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "product_id", nullable = false)
+    @JsonIgnore
     private Product product;
 
-    @Column(name = "sku", length = 100)
+    @Column(name = "sku", length = 100, unique = true)
     private String sku;
 
     @Column(name = "price", precision = 10, scale = 2)
@@ -49,4 +56,8 @@ public class ProductVariant extends Auditable {
 
     @Column(name = "barcode")
     private String barcode;
+
+    @Column(name = "is_active")
+    private Boolean isActive = true;
 }
+
