@@ -1,6 +1,6 @@
 package com.canvify.test.controller.inventory;
 
-import com.canvify.test.response.ApiResponse;
+import com.canvify.test.model.ApiResponse;
 import com.canvify.test.service.inventory.InventoryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;

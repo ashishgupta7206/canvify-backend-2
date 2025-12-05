@@ -5,6 +5,7 @@ import com.canvify.test.enums.DiscountType;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
@@ -28,11 +29,14 @@ public class Coupon extends Auditable {
     @Enumerated(EnumType.STRING)
     private DiscountType discountType; // enum
 
-    private Double discountValue;
+    @Column(precision = 10, scale = 2)
+    private BigDecimal discountValue;
 
-    private Double minOrderValue;
+    @Column(precision = 10, scale = 2)
+    private BigDecimal minOrderValue;
 
-    private Double maxDiscount;
+    @Column(precision = 10, scale = 2)
+    private BigDecimal maxDiscount;
 
     private LocalDateTime validFrom;
 

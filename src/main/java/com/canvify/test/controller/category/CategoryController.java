@@ -7,6 +7,7 @@ import com.canvify.test.request.category.CategoryUpdateRequest;
 import com.canvify.test.service.category.CategoryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.validation.Valid;
@@ -14,6 +15,7 @@ import jakarta.validation.Valid;
 @RestController
 @RequestMapping("/api/categories")
 @RequiredArgsConstructor
+//@PreAuthorize("ROLE_ADMIN")
 public class CategoryController {
 
     private final CategoryService categoryService;
@@ -39,6 +41,11 @@ public class CategoryController {
     @PostMapping("/search")
     public ResponseEntity<ApiResponse<?>> getAll(@RequestBody BaseIndexRequest req) {
         return ResponseEntity.ok(categoryService.getAllCategories(req));
+    }
+
+    @PostMapping("/search/parent")
+    public ResponseEntity<ApiResponse<?>> getAllParentCategories(@RequestBody BaseIndexRequest req) {
+        return ResponseEntity.ok(categoryService.getAllParentCategories(req));
     }
 
     @DeleteMapping("/{id}")

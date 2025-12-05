@@ -26,6 +26,11 @@ public class ProductImage extends Auditable {
     @JsonIgnore
     private Product product;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "product_variant_id")
+    @JsonIgnore
+    private ProductVariant productVariant;
+
     @Column(name = "image_url", length = 500)
     private String imageUrl;
 

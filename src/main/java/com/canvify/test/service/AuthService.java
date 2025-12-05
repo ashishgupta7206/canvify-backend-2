@@ -10,7 +10,7 @@ import com.canvify.test.response.auth.JwtResponse;
 public interface AuthService {
 
     // PASSWORD LOGIN
-    JwtResponse login(LoginRequest request);
+    ApiResponse<?> login(LoginRequest request);
 
     // REGISTRATION
     ApiResponse<?> register(RegistrationRequest request);

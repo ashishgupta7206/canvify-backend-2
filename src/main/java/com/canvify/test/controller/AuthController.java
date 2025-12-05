@@ -34,8 +34,13 @@ public class AuthController {
 
     // PASSWORD LOGIN
     @PostMapping("/login")
-    public JwtResponse login(@Valid @RequestBody LoginRequest request) {
-        return authService.login(request);
+    public ResponseEntity<ApiResponse<?>> login(@Valid @RequestBody LoginRequest request) {
+        ApiResponse<?> response = authService.login(request);
+        if (response.isSuccess()) {
+            return ResponseEntity.ok(response);
+        }
+        return ResponseEntity.badRequest().body(response);
+
     }
 
     // SEND OTP

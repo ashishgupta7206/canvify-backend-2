@@ -1,10 +1,10 @@
 package com.canvify.test.service.product;
 
 import com.canvify.test.dto.product.ProductDTO;
-import com.canvify.test.model.base.BaseIndexRequest;
+import com.canvify.test.model.BaseIndexRequest;
 import com.canvify.test.request.product.CreateProductRequest;
 import com.canvify.test.request.product.UpdateProductRequest;
-import com.canvify.test.response.ApiResponse;
+import com.canvify.test.model.ApiResponse;
 
 public interface ProductService {
 

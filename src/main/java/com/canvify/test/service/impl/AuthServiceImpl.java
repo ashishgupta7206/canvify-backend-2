@@ -9,10 +9,14 @@ import com.canvify.test.request.auth.LoginRequest;
 import com.canvify.test.request.auth.OtpLoginRequest;
 import com.canvify.test.request.auth.OtpRequest;
 import com.canvify.test.request.auth.RegistrationRequest;
+import com.canvify.test.response.auth.AuthRegisterResponse;
 import com.canvify.test.response.auth.JwtResponse;
+import com.canvify.test.security.CustomUserDetails;
 import com.canvify.test.security.JwtTokenProvider;
+import com.canvify.test.security.UserContext;
 import com.canvify.test.service.AuthService;
 import com.canvify.test.utility.OtpUtil;
+import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -29,62 +33,52 @@ public class AuthServiceImpl implements AuthService {
 
     @Autowired
     private AuthenticationManager authenticationManager;
-
     @Autowired
     private UserRepository userRepository;
-
     @Autowired
     private RoleRepository roleRepository;
-
     @Autowired
     private PasswordEncoder passwordEncoder;
-
     @Autowired
     private JwtTokenProvider tokenProvider;
+    @Autowired
+    private UserContext userContext;
 
     // ------------------------
     // PASSWORD LOGIN
     // ------------------------
     @Override
-    public JwtResponse login(LoginRequest request) {
+    public ApiResponse<?> login(LoginRequest request) {
 
-        Authentication authentication = authenticationManager.authenticate(
+        Authentication auth = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(
                         request.getIdentifier(),
                         request.getPassword()
                 )
         );
 
-        SecurityContextHolder.getContext().setAuthentication(authentication);
-        String token = tokenProvider.generateToken(authentication);
+        SecurityContextHolder.getContext().setAuthentication(auth);
 
-        return JwtResponse.builder()
-                .accessToken(token)
-                .build();
+        User user = ((CustomUserDetails) auth.getPrincipal()).getUser();
+        JwtResponse jwt = buildJwtResponse(user, tokenProvider.generateToken(auth));
+
+        return ApiResponse.success(jwt, "Login successful");
     }
 
     // ------------------------
-    // SEND OTP (email or mobile)
+    // SEND OTP
     // ------------------------
     @Override
-    public ApiResponse<?> sendOtp(OtpRequest request) {
+    public ApiResponse<?> sendOtp(OtpRequest req) {
 
-        User user = userRepository
-                .findByUsernameOrEmailOrMobileNumber(
-                        request.getIdentifier(),
-                        request.getIdentifier(),
-                        request.getIdentifier()
-                )
-                .orElseThrow(() -> new RuntimeException("User not found"));
+        User user = findUser(req.getIdentifier());
 
         String otp = OtpUtil.generateOtp();
         user.setOtp(otp);
         user.setOtpExpiry(LocalDateTime.now().plusMinutes(5));
-
         userRepository.save(user);
 
-        // TODO: Integrate SMS/Email sending
-        System.out.println("OTP for " + user.getUsername() + " is " + otp);
+        System.out.println("OTP: " + otp);
 
         return ApiResponse.success(null, "OTP sent successfully");
     }
@@ -93,72 +87,117 @@ public class AuthServiceImpl implements AuthService {
     // OTP LOGIN
     // ------------------------
     @Override
-    public JwtResponse otpLogin(OtpLoginRequest request) {
+    public JwtResponse otpLogin(OtpLoginRequest req) {
 
-        User user = userRepository
-                .findByUsernameOrEmailOrMobileNumber(
-                        request.getIdentifier(),
-                        request.getIdentifier(),
-                        request.getIdentifier()
-                )
-                .orElseThrow(() -> new RuntimeException("Invalid identifier"));
+        User user = findUser(req.getIdentifier());
 
-        if (user.getOtp() == null || !user.getOtp().equals(request.getOtp()))
-            throw new RuntimeException("Invalid OTP");
+        validateOtp(user, req.getOtp());
 
-        if (user.getOtpExpiry().isBefore(LocalDateTime.now()))
-            throw new RuntimeException("OTP expired");
-
-        // Clear OTP after use
+        // Clear OTP after successful login
         user.setOtp(null);
         user.setOtpExpiry(null);
         userRepository.save(user);
 
-        Authentication authentication =
-                new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities());
+        Authentication auth = new UsernamePasswordAuthenticationToken(
+                user, null, user.getAuthorities());
 
-        SecurityContextHolder.getContext().setAuthentication(authentication);
+        SecurityContextHolder.getContext().setAuthentication(auth);
 
-        String token = tokenProvider.generateToken(authentication);
-
-        return JwtResponse.builder()
-                .accessToken(token)
-                .build();
+        return buildJwtResponse(user, tokenProvider.generateToken(auth));
     }
 
     // ------------------------
     // REGISTRATION
     // ------------------------
     @Override
+    @Transactional
     public ApiResponse<?> register(RegistrationRequest req) {
 
-        if (userRepository.existsByEmail(req.getEmail()))
-            return ApiResponse.error("Email already in use");
+        validateRegistration(req);
 
-        if (userRepository.existsByMobileNumber(req.getMobileNumber()))
-            return ApiResponse.error("Mobile already in use");
-
-        // AUTO-GENERATE USERNAME: AURA001
-        String last = userRepository.findTopByOrderByIdDesc()
-                .map(User::getUsername)
-                .orElse("AURA000");
-
-        int num = Integer.parseInt(last.substring(4));
-        String newUsername = String.format("AURA%03d", num + 1);
+        String username = generateNextUsername();
 
         Role role = roleRepository.findByName("ROLE_USER")
-                .orElseThrow(() -> new RuntimeException("ROLE_USER missing"));
+                .orElseThrow(() -> new RuntimeException("Role missing"));
 
         User user = new User();
         user.setName(req.getName());
-        user.setUsername(newUsername);
-        user.setEmail(req.getEmail());
-        user.setMobileNumber(req.getMobileNumber());
+        user.setUsername(username);
+        user.setEmail(blankToNull(req.getEmail()));
+        user.setMobileNumber(blankToNull(req.getMobileNumber()));
         user.setPassword(passwordEncoder.encode(req.getPassword()));
         user.setRole(role);
 
-        userRepository.save(user);
+        User saved = userRepository.save(user);
 
-        return ApiResponse.success(null, "User registered successfully");
+        return ApiResponse.success(
+                AuthRegisterResponse.builder()
+                        .id(saved.getId())
+                        .username(saved.getUsername())
+                        .name(saved.getName())
+                        .email(saved.getEmail())
+                        .mobileNumber(saved.getMobileNumber())
+                        .role(saved.getRole())
+                        .build(),
+                "User registered successfully"
+        );
+    }
+
+    // ------------------------------------------------------------
+    // PRIVATE METHODS BELOW — CLEAN ARCHITECTURE
+    // ------------------------------------------------------------
+
+    private User findUser(String identifier) {
+        return userRepository.findByUsernameOrEmailOrMobileNumber(identifier, identifier, identifier)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+    }
+
+    private void validateOtp(User user, String otp) {
+
+        if (user.getOtp() == null || !user.getOtp().equals(otp))
+            throw new RuntimeException("Invalid OTP");
+
+        if (user.getOtpExpiry() == null || user.getOtpExpiry().isBefore(LocalDateTime.now()))
+            throw new RuntimeException("OTP expired");
+    }
+
+    private void validateRegistration(RegistrationRequest req) {
+
+        if (isBlank(req.getEmail()) && isBlank(req.getMobileNumber()))
+            throw new RuntimeException("Email or Mobile is required");
+
+        if (!isBlank(req.getEmail()) && userRepository.existsByEmail(req.getEmail()))
+            throw new RuntimeException("Email already exists");
+
+        if (!isBlank(req.getMobileNumber()) && userRepository.existsByMobileNumber(req.getMobileNumber()))
+            throw new RuntimeException("Mobile already exists");
+    }
+
+    private String generateNextUsername() {
+        String last = userRepository.findTopByOrderByIdDesc()
+                .map(User::getUsername)
+                .orElse("AURA000");
+        int next = Integer.parseInt(last.substring(4)) + 1;
+        return String.format("AURA%03d", next);
+    }
+
+    private JwtResponse buildJwtResponse(User user, String token) {
+        return JwtResponse.builder()
+                .accessToken(token)
+                .tokenType("Bearer")
+                .username(user.getUsername())
+                .name(user.getName())
+                .email(user.getEmail())
+                .mobileNumber(user.getMobileNumber())
+                .role(user.getRole().getName())
+                .build();
+    }
+
+    private boolean isBlank(String s) {
+        return s == null || s.isBlank();
+    }
+
+    private String blankToNull(String s) {
+        return isBlank(s) ? null : s;
     }
 }

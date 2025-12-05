@@ -8,10 +8,11 @@ import com.canvify.test.repository.CouponRepository;
 import com.canvify.test.repository.CouponUsageRepository;
 import com.canvify.test.request.coupon.ApplyCouponRequest;
 import com.canvify.test.request.coupon.CouponRequest;
-import com.canvify.test.response.ApiResponse;
+import com.canvify.test.model.ApiResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Service
@@ -92,31 +93,31 @@ public class CouponServiceImpl implements CouponService {
         }
 
         // Minimum order value check
-        if (req.getCartAmount() < coupon.getMinOrderValue()) {
+        if (req.getCartAmount().compareTo(coupon.getMinOrderValue()) < 0) {
             return ApiResponse.error("Cart amount is less than minimum order value for coupon.");
         }
 
         // Calculate discount
-        double discount = 0;
+        BigDecimal discount = BigDecimal.ZERO;
 
         if (coupon.getDiscountType() == DiscountType.FLAT) {
             discount = coupon.getDiscountValue();
         } else {
-            discount = (req.getCartAmount() * coupon.getDiscountValue()) / 100;
+            discount = req.getCartAmount().multiply(coupon.getDiscountValue()).divide(BigDecimal.valueOf(100));
         }
 
         // Cap max discount
-        if (coupon.getMaxDiscount() != null && discount > coupon.getMaxDiscount()) {
+        if (coupon.getMaxDiscount() != null && discount.compareTo(coupon.getMaxDiscount()) > 0) {
             discount = coupon.getMaxDiscount();
         }
 
-        double payable = req.getCartAmount() - discount;
+        BigDecimal payable = req.getCartAmount().subtract(discount);
 
         return ApiResponse.success(
-                new CouponApplyResponse(
+                new com.canvify.test.dto.coupon.CouponApplyResponse(
                         req.getCouponCode(),
-                        discount,
-                        payable
+                        discount.doubleValue(),
+                        payable.doubleValue()
                 ),
                 "Coupon applied successfully"
         );

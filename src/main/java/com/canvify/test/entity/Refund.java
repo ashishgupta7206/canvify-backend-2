@@ -1,6 +1,7 @@
 package com.canvify.test.entity;
 
 import com.canvify.test.entity.audit.Auditable;
+import com.canvify.test.enums.PaymentStatus;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;

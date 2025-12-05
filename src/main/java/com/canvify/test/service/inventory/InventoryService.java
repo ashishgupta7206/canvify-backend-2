@@ -1,6 +1,6 @@
 package com.canvify.test.service.inventory;
 
-import com.canvify.test.response.ApiResponse;
+import com.canvify.test.model.ApiResponse;
 
 public interface InventoryService {
 

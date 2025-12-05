@@ -13,10 +13,9 @@ public class UpdateProductRequest {
     private String longDescription;
     private String mainImage;
 
+    private Long categoryId;
     private ProductStatus status;
 
-    private Long categoryId;
-
-    private List<ProductVariantRequest> variants;
-    private List<ProductImageRequest> images;
+    private List<ProductVariantUpdateRequest> variants;
+    private List<ProductImageRequest> images; // product-level images
 }

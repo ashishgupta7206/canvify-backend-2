@@ -31,6 +31,6 @@ public class Cart extends Auditable {
     @Column(name = "total_items")
     private Integer totalItems = 0;
 
-    @Column(name = "total_amount", precision = 10, scale = 2)
+    @Column(name = "total_amount")
     private Double totalAmount = 0.0;
 }

@@ -6,7 +6,7 @@ import com.canvify.test.security.CustomUserDetails;
 
 public interface ProfileService {
 
-    ProfileDTO getProfile(CustomUserDetails currentUser);
+    ProfileDTO getProfile();
 
-    ProfileDTO updateProfile(CustomUserDetails currentUser, ProfileRequest request);
+    ProfileDTO updateProfile(ProfileRequest request);
 }

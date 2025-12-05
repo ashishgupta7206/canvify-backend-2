@@ -8,7 +8,6 @@ import com.canvify.test.service.profile.ProfileService;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -19,19 +18,18 @@ public class ProfileController {
     private ProfileService profileService;
 
     @GetMapping
-    public ResponseEntity<ApiResponse<ProfileDTO>> getProfile(@AuthenticationPrincipal CustomUserDetails currentUser) {
+    public ResponseEntity<ApiResponse<ProfileDTO>> getProfile() {
         return ResponseEntity.ok(
-                ApiResponse.success(profileService.getProfile(currentUser), "Profile fetched successfully")
+                ApiResponse.success(profileService.getProfile(), "Profile fetched successfully")
         );
     }
 
     @PutMapping
     public ResponseEntity<ApiResponse<ProfileDTO>> updateProfile(
-            @AuthenticationPrincipal CustomUserDetails currentUser,
             @Valid @RequestBody ProfileRequest request) {
 
         return ResponseEntity.ok(
-                ApiResponse.success(profileService.updateProfile(currentUser, request), "Profile updated successfully")
+                ApiResponse.success(profileService.updateProfile(request), "Profile updated successfully")
         );
     }
 }

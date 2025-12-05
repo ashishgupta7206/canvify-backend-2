@@ -15,5 +15,7 @@ public interface CategoryService {
 
     ApiResponse<?> getAllCategories(BaseIndexRequest request);
 
+    ApiResponse<?> getAllParentCategories(BaseIndexRequest request);
+
     ApiResponse<?> deleteCategory(Long id);
 }

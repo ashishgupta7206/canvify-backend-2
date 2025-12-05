@@ -3,7 +3,7 @@ package com.canvify.test.service.coupon;
 import com.canvify.test.dto.coupon.CouponDTO;
 import com.canvify.test.request.coupon.ApplyCouponRequest;
 import com.canvify.test.request.coupon.CouponRequest;
-import com.canvify.test.response.ApiResponse;
+import com.canvify.test.model.ApiResponse;
 
 public interface CouponService {
 

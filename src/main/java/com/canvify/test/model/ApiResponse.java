@@ -1,13 +1,18 @@
 package com.canvify.test.model;
 
 import com.canvify.test.model.Pagination;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
+
 import java.time.LocalDateTime;
 import java.util.Map;
 
 @Data
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class ApiResponse<T> {
 
     private boolean success;

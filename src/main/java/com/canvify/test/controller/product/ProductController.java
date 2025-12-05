@@ -1,12 +1,13 @@
 package com.canvify.test.controller.product;
 
-import com.canvify.test.model.base.BaseIndexRequest;
+import com.canvify.test.model.BaseIndexRequest;
 import com.canvify.test.request.product.CreateProductRequest;
 import com.canvify.test.request.product.UpdateProductRequest;
-import com.canvify.test.response.ApiResponse;
+import com.canvify.test.model.ApiResponse;
 import com.canvify.test.service.product.ProductService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.validation.Valid;
@@ -14,6 +15,7 @@ import jakarta.validation.Valid;
 @RestController
 @RequestMapping("/api/products")
 @RequiredArgsConstructor
+//@PreAuthorize("ROLE_ADMIN")
 public class ProductController {
 
     private final ProductService productService;

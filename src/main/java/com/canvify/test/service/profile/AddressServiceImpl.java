@@ -7,6 +7,7 @@ import com.canvify.test.repository.AddressRepository;
 import com.canvify.test.repository.UserRepository;
 import com.canvify.test.request.profile.AddressRequest;
 import com.canvify.test.security.CustomUserDetails;
+import com.canvify.test.security.UserContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -22,17 +23,22 @@ public class AddressServiceImpl implements AddressService {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private UserContext userContext;
+
     @Override
-    public List<AddressDTO> getAddresses(CustomUserDetails currentUser) {
-        return addressRepository.findByUserIdAndBitDeletedFlagFalse(currentUser.getId())
+    public List<AddressDTO> getAddresses() {
+        Long userId = userContext.getUserId();
+        return addressRepository.findByUserIdAndBitDeletedFlagFalse(userId)
                 .stream()
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
     }
 
     @Override
-    public AddressDTO addAddress(CustomUserDetails currentUser, AddressRequest request) {
-        User user = userRepository.findById(currentUser.getId())
+    public AddressDTO addAddress( AddressRequest request) {
+        Long userId = userContext.getUserId();
+        User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
         Address address = convertToEntity(request);
@@ -42,12 +48,13 @@ public class AddressServiceImpl implements AddressService {
     }
 
     @Override
-    public AddressDTO updateAddress(Long addressId, CustomUserDetails currentUser, AddressRequest request) {
+    public AddressDTO updateAddress(Long addressId, AddressRequest request) {
 
         Address address = addressRepository.findById(addressId)
                 .orElseThrow(() -> new RuntimeException("Address not found"));
 
-        if (!address.getUser().getId().equals(currentUser.getId())) {
+        CustomUserDetails currentUser = userContext.getCurrentUser();
+        if (!(address.getUser().getId().equals(currentUser.getId()) || currentUser.getUser().getRole().equals("ROLE_ADMIN"))) {
             throw new RuntimeException("Unauthorized access");
         }
 
@@ -65,10 +72,11 @@ public class AddressServiceImpl implements AddressService {
     }
 
     @Override
-    public void deleteAddress(Long addressId, CustomUserDetails currentUser) {
+    public void deleteAddress(Long addressId) {
         Address address = addressRepository.findById(addressId)
                 .orElseThrow(() -> new RuntimeException("Address not found"));
 
+        CustomUserDetails currentUser = userContext.getCurrentUser();
         if (!address.getUser().getId().equals(currentUser.getId())) {
             throw new RuntimeException("Unauthorized access");
         }

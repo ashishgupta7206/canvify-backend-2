@@ -3,6 +3,7 @@ package com.canvify.test.request.product;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 @Data
 public class ProductVariantRequest {
@@ -21,4 +22,6 @@ public class ProductVariantRequest {
     private String color;
 
     private String barcode;
+
+    private List<ProductImageRequest> images; // NEW (variant-level images)
 }

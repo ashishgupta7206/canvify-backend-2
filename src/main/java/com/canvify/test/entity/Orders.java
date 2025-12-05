@@ -1,14 +1,18 @@
 package com.canvify.test.entity;
 
 import com.canvify.test.entity.audit.Auditable;
+import com.canvify.test.enums.OrderStatus;
+import com.canvify.test.enums.PaymentStatus;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
+@EqualsAndHashCode(callSuper = true)
 @Entity
 @Table(name = "t_orders")
 @Data
@@ -31,8 +35,9 @@ public class Orders extends Auditable {
     @Column(name = "order_date")
     private LocalDateTime orderDate;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "status", length = 50)
-    private String status;
+    private OrderStatus status;
 
     @Column(name = "total_amount", precision = 10, scale = 2)
     private BigDecimal totalAmount;
@@ -43,6 +48,7 @@ public class Orders extends Auditable {
     @Column(name = "payable_amount", precision = 10, scale = 2)
     private BigDecimal payableAmount;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "payment_status", length = 50)
-    private String paymentStatus;
+    private PaymentStatus paymentStatus;
 }

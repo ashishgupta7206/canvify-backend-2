@@ -2,7 +2,7 @@ package com.canvify.test.controller.coupon;
 
 import com.canvify.test.request.coupon.ApplyCouponRequest;
 import com.canvify.test.request.coupon.CouponRequest;
-import com.canvify.test.response.ApiResponse;
+import com.canvify.test.model.ApiResponse;
 import com.canvify.test.service.coupon.CouponService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;

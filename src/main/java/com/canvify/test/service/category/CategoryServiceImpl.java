@@ -8,10 +8,12 @@ import com.canvify.test.request.category.CategoryUpdateRequest;
 import com.canvify.test.model.ApiResponse;
 import com.canvify.test.model.Pagination;
 import com.canvify.test.model.BaseIndexRequest;
+import com.canvify.test.response.category.GetCategoryResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
 import java.util.stream.Collectors;
 
 @Service
@@ -30,25 +32,25 @@ public class CategoryServiceImpl implements CategoryService {
         c.setImageUrl(req.getImageUrl());
 
         if (req.getParentId() != null)
-            c.setParent(repo.findById(req.getParentId())
+            c.setParent(repo.findByIdAndBitDeletedFlagFalse(req.getParentId())
                     .orElseThrow(() -> new RuntimeException("Parent category not found")));
 
-        repo.save(c);
+        Category category = repo.save(c);
 
-        return ApiResponse.success("Category created successfully");
+        return ApiResponse.success(category, "Category created successfully");
     }
 
     @Override
     public ApiResponse<?> updateCategory(Long id, CategoryUpdateRequest req) {
 
-        Category c = repo.findById(id)
+        Category c = repo.findByIdAndBitDeletedFlagFalse(id)
                 .orElseThrow(() -> new RuntimeException("Category not found"));
 
         if (req.getName() != null) c.setName(req.getName());
         if (req.getDescription() != null) c.setDescription(req.getDescription());
         if (req.getImageUrl() != null) c.setImageUrl(req.getImageUrl());
         if (req.getParentId() != null)
-            c.setParent(repo.findById(req.getParentId())
+            c.setParent(repo.findByIdAndBitDeletedFlagFalse(req.getParentId())
                     .orElseThrow(() -> new RuntimeException("Parent not found")));
 
         repo.save(c);
@@ -59,10 +61,22 @@ public class CategoryServiceImpl implements CategoryService {
     @Override
     public ApiResponse<?> getCategory(Long id) {
 
-        Category c = repo.findById(id)
+        Category c = repo.findByIdAndBitDeletedFlagFalse(id)
                 .orElseThrow(() -> new RuntimeException("Category not found"));
 
-        return ApiResponse.success(toDTO(c));
+        List<Category> subCategory = repo.findByParentIdAndBitDeletedFlagFalse(id);
+
+        GetCategoryResponse resp = GetCategoryResponse.builder()
+                .name(c.getName())
+                .id(c.getId())
+                .slug(c.getSlug())
+                .description(c.getDescription())
+                .imageUrl(c.getImageUrl())
+                .parentId(c.getParent() != null ? c.getParent().getId() : null)
+                .subCategory(subCategory)
+                .build();
+
+        return ApiResponse.success(resp);
     }
 
     @Override
@@ -76,6 +90,19 @@ public class CategoryServiceImpl implements CategoryService {
                 .collect(Collectors.toList());
 
         return ApiResponse.success(items, "Categories fetched", new Pagination(page));
+    }
+
+    @Override
+    public ApiResponse<?> getAllParentCategories(BaseIndexRequest request) {
+
+        Page<Category> page = repo.findByBitDeletedFlagFalseAndParentIdIsNull(request.buildPageable());
+
+        var items = page.getContent()
+                .stream()
+                .map(this::toDTO)
+                .collect(Collectors.toList());
+
+        return ApiResponse.success(items, " Parent categories fetched", new Pagination(page));
     }
 
     @Override

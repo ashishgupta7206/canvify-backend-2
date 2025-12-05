@@ -6,7 +6,7 @@ import com.canvify.test.enums.StockChangeType;
 import com.canvify.test.enums.StockReferenceType;
 import com.canvify.test.repository.ProductVariantRepository;
 import com.canvify.test.repository.StockLedgerRepository;
-import com.canvify.test.response.ApiResponse;
+import com.canvify.test.model.ApiResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
