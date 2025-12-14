@@ -10,6 +10,7 @@ public class ProductVariantResponse {
 
     private Long id;
 
+    private String name;
     private String sku;
     private BigDecimal price;
     private BigDecimal mrp;

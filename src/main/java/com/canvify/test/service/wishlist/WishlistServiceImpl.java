@@ -6,13 +6,18 @@ import com.canvify.test.model.ApiResponse;
 import com.canvify.test.model.BaseIndexRequest;
 import com.canvify.test.model.Pagination;
 import com.canvify.test.repository.*;
+import com.canvify.test.request.product.ProductAndProductVariantResponse;
+import com.canvify.test.request.product.ProductVariantRow;
 import com.canvify.test.request.wishlist.AddWishlistRequest;
-import com.canvify.test.security.CustomUserDetails;
+import com.canvify.test.security.UserContext;
+import com.canvify.test.service.product.ProductService;
+import com.canvify.test.service.product.ProductServiceImpl;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.math.BigDecimal;
@@ -25,23 +30,25 @@ public class WishlistServiceImpl implements WishlistService {
     private final WishlistRepository wishlistRepository;
     private final ProductRepository productRepository;
     private final ProductVariantRepository variantRepository;
+    private final UserContext userContext;
+    private final ProductService productService;
 
     @Override
     @Transactional
-    public ApiResponse<?> addToWishlist(CustomUserDetails currentUser, AddWishlistRequest request) {
+    public ApiResponse<?> addToWishlist(AddWishlistRequest request) {
 
-        Long userId = currentUser.getId();
+        Long userId = userContext.getUserId();
         Long productId = request.getProductId();
         Long variantId = request.getProductVariantId();
 
         // 1) Validate product exists
-        Product product = productRepository.findById(productId)
+        Product product = productRepository.findByIdAndBitDeletedFlagFalse(productId)
                 .orElseThrow(() -> new RuntimeException("Product not found"));
 
         // 2) If variant provided, validate it belongs to product
         ProductVariant variant = null;
         if (variantId != null) {
-            variant = variantRepository.findById(variantId)
+            variant = variantRepository.findByIdAndBitDeletedFlagFalse(variantId)
                     .orElseThrow(() -> new RuntimeException("Product variant not found"));
 
             if (!variant.getProduct().getId().equals(productId)) {
@@ -54,9 +61,7 @@ public class WishlistServiceImpl implements WishlistService {
         if (variantId != null) {
             existing = wishlistRepository.findByUserIdAndProductIdAndProductVariantIdAndBitDeletedFlagFalse(userId, productId, variantId);
         } else {
-            // search for entries with same user & product & null variant
-            existing = wishlistRepository.findByUserIdAndProductIdAndProductVariantIdAndBitDeletedFlagFalse(userId, productId, null);
-            // NOTE: Some JPA implementations may not match null on derived query. If this fails, consider custom @Query (I can add).
+            throw new RuntimeException("Product Variant Not found");
         }
 
         if (existing.isPresent()) {
@@ -71,16 +76,16 @@ public class WishlistServiceImpl implements WishlistService {
         wi.setProductVariant(variant);
         wishlistRepository.save(wi);
 
-        return ApiResponse.success("Added to wishlist");
+        return ApiResponse.success(null,"Added to wishlist");
     }
 
     @Override
     @Transactional
-    public ApiResponse<?> removeFromWishlist(CustomUserDetails currentUser, Long wishlistItemId) {
-        Wishlist item = wishlistRepository.findById(wishlistItemId)
+    public ApiResponse<?> removeFromWishlist(Long id) {
+        Wishlist item = wishlistRepository.findByIdAndBitDeletedFlagFalse(id)
                 .orElseThrow(() -> new RuntimeException("Wishlist item not found"));
 
-        if (!item.getUser().getId().equals(currentUser.getId())) {
+        if (!item.getUser().getId().equals(userContext.getUserId())) {
             throw new RuntimeException("Not authorized to remove this wishlist item");
         }
 
@@ -92,9 +97,9 @@ public class WishlistServiceImpl implements WishlistService {
 
     @Override
     @Transactional
-    public ApiResponse<?> removeFromWishlistByProduct(CustomUserDetails currentUser, Long productId, Long variantId) {
+    public ApiResponse<?> removeFromWishlistByProduct(Long productId, Long variantId) {
 
-        Long userId = currentUser.getId();
+        Long userId = userContext.getUserId();
         Optional<Wishlist> existing;
         if (variantId != null) {
             existing = wishlistRepository.findByUserIdAndProductIdAndProductVariantIdAndBitDeletedFlagFalse(userId, productId, variantId);
@@ -114,22 +119,37 @@ public class WishlistServiceImpl implements WishlistService {
     }
 
     @Override
-    public ApiResponse<?> listWishlist(CustomUserDetails currentUser, BaseIndexRequest request) {
+    public ApiResponse<?> listWishlist(BaseIndexRequest request) {
 
-        // Build pageable & fetch page
         var pageable = request.buildPageable();
-        Page<Wishlist> page = wishlistRepository.findByUserIdAndBitDeletedFlagFalse(currentUser.getId(), pageable);
 
-        List<WishlistItemDTO> dtos = page.getContent().stream()
-                .map(this::toDto)
-                .collect(Collectors.toList());
+        Page<Wishlist> page =
+                wishlistRepository.findByUserIdAndBitDeletedFlagFalse(
+                        userContext.getUserId(),
+                        pageable
+                );
 
-        return ApiResponse.success(dtos, "Wishlist fetched", new Pagination(page));
+        List<ProductVariantRow> productVariantRows =
+                page.getContent()
+                        .stream()
+                        .map(w -> new ProductVariantRow(
+                                w.getProduct().getId(),
+                                w.getProductVariant() != null
+                                        ? w.getProductVariant().getId()
+                                        : null
+                        ))
+                        .toList();
+
+        List<ProductAndProductVariantResponse> response =
+                productService.getProductAndProductVariant(productVariantRows);
+
+        // continue with your existing logic (batch product fetch, etc.)
+        return ApiResponse.success(response, "Wishlist fetched", new Pagination(page));
     }
 
     @Override
-    public List<WishlistItemDTO> listAllForUser(CustomUserDetails currentUser) {
-        var list = wishlistRepository.findByUserIdAndBitDeletedFlagFalse(currentUser.getId());
+    public List<WishlistItemDTO> listAllForUser() {
+        var list = wishlistRepository.findByUserIdAndBitDeletedFlagFalse(userContext.getUserId());
         return list.stream().map(this::toDto).collect(Collectors.toList());
     }
 

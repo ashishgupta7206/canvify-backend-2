@@ -4,6 +4,8 @@ import com.canvify.test.entity.audit.Auditable;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.math.BigDecimal;
+
 @Entity
 @Table(name = "t_cart", indexes = {
         @Index(name = "idx_cart_user", columnList = "user_id"),
@@ -32,5 +34,5 @@ public class Cart extends Auditable {
     private Integer totalItems = 0;
 
     @Column(name = "total_amount")
-    private Double totalAmount = 0.0;
+    private BigDecimal totalAmount = BigDecimal.ZERO;
 }

@@ -12,7 +12,7 @@ import com.canvify.test.repository.ProductVariantRepository;
 import com.canvify.test.request.cart.AddToCartRequest;
 import com.canvify.test.request.cart.UpdateCartRequest;
 import com.canvify.test.security.CustomUserDetails;
-import com.canvify.test.service.inventory.InventoryService;
+import com.canvify.test.security.UserContext;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,135 +28,124 @@ public class CartServiceImpl implements CartService {
     private final CartRepository cartRepository;
     private final CartItemRepository cartItemRepository;
     private final ProductVariantRepository variantRepository;
-    private final InventoryService inventoryService; // optional - if present, used for stock checks
+    private final UserContext userContext;
 
-    private Cart ensureCartFor(AddToCartRequest req, CustomUserDetails currentUser) {
-        if (currentUser != null) {
-            // logged-in user's cart
-            return cartRepository.findByUserIdAndBitDeletedFlagFalse(currentUser.getId())
+    /* =========================================================
+       CART RESOLUTION (SINGLE SOURCE OF TRUTH)
+       ========================================================= */
+
+    private Cart getOrCreateCart(String guestId) {
+
+        CustomUserDetails user = userContext.getCurrentUser();
+
+        // Logged-in user cart
+        if (user != null) {
+            return cartRepository.findByUserIdAndBitDeletedFlagFalse(user.getId())
                     .orElseGet(() -> {
                         Cart c = new Cart();
-                        c.setUser(null); // set below with reference
-                        // set user by id reference to avoid extra read
                         com.canvify.test.entity.User u = new com.canvify.test.entity.User();
-                        u.setId(currentUser.getId());
+                        u.setId(user.getId());
                         c.setUser(u);
                         c.setTotalItems(0);
-                        c.setTotalAmount(BigDecimal.ZERO.doubleValue());
+                        c.setTotalAmount(BigDecimal.ZERO);
                         return cartRepository.save(c);
                     });
-        } else {
-            // guest flow using cartToken
-            String cartToken = req.getCartToken();
-            if (cartToken == null || cartToken.isBlank()) {
-                // create a new token and cart
-                cartToken = UUID.randomUUID().toString();
+        }
+
+        // Guest cart
+        return cartRepository.findByCartTokenAndBitDeletedFlagFalse(guestId)
+                .orElseGet(() -> {
+                    Cart c = new Cart();
+                    c.setCartToken(guestId);
+                    c.setTotalItems(0);
+                    c.setTotalAmount(BigDecimal.ZERO);
+                    return cartRepository.save(c);
+                });
+    }
+
+    private Cart resolveCart(String guestId) {
+
+        CustomUserDetails user = userContext.getCurrentUser();
+
+        if (user != null) {
+            return cartRepository.findByUserIdAndBitDeletedFlagFalse(user.getId()).orElse(null);
+        }
+
+        if (guestId == null) return null;
+
+        return cartRepository.findByCartTokenAndBitDeletedFlagFalse(guestId).orElse(null);
+    }
+
+    private void validateOwnership(Cart cart, String guestId) {
+
+        CustomUserDetails user = userContext.getCurrentUser();
+
+        if (user != null) {
+            if (cart.getUser() == null || !cart.getUser().getId().equals(user.getId())) {
+                throw new RuntimeException("Unauthorized cart access");
             }
-            String finalToken = cartToken;
-            return cartRepository.findByCartTokenAndBitDeletedFlagFalse(finalToken)
-                    .orElseGet(() -> {
-                        Cart c = new Cart();
-                        c.setCartToken(finalToken);
-                        c.setTotalItems(0);
-                        c.setTotalAmount(BigDecimal.ZERO.doubleValue());
-                        return cartRepository.save(c);
-                    });
+        } else {
+            if (!Objects.equals(cart.getCartToken(), guestId)) {
+                throw new RuntimeException("Unauthorized guest cart access");
+            }
         }
     }
 
-    private Cart resolveCart(String cartToken, CustomUserDetails currentUser) {
-        if (currentUser != null) {
-            return cartRepository.findByUserIdAndBitDeletedFlagFalse(currentUser.getId())
-                    .orElse(null);
-        }
-        if (cartToken == null) return null;
-        return cartRepository.findByCartTokenAndBitDeletedFlagFalse(cartToken).orElse(null);
-    }
+    /* =========================================================
+       ADD TO CART
+       ========================================================= */
 
     @Override
     @Transactional
-    public ApiResponse<?> addToCart(AddToCartRequest req, CustomUserDetails currentUser) {
+    public ApiResponse<?> addToCart(AddToCartRequest req, String guestId) {
 
-        Cart cart;
-        if (currentUser != null) {
-            cart = cartRepository.findByUserIdAndBitDeletedFlagFalse(currentUser.getId())
-                    .orElseGet(() -> {
-                        Cart c = new Cart();
-                        com.canvify.test.entity.User u = new com.canvify.test.entity.User();
-                        u.setId(currentUser.getId());
-                        c.setUser(u);
-                        c.setTotalItems(0);
-                        c.setTotalAmount(0.0);
-                        return cartRepository.save(c);
-                    });
-        } else {
-            String token = req.getCartToken();
-            if (token == null || token.isBlank()) token = UUID.randomUUID().toString();
-            final String finalToken = token;
-            cart = cartRepository.findByCartTokenAndBitDeletedFlagFalse(token)
-                    .orElseGet(() -> {
-                        Cart c = new Cart();
-                        c.setCartToken(finalToken);
-                        c.setTotalItems(0);
-                        c.setTotalAmount(BigDecimal.ZERO.doubleValue());
-                        return cartRepository.save(c);
-                    });
-        }
+        Cart cart = getOrCreateCart(guestId);
 
         ProductVariant variant = variantRepository.findById(req.getProductVariantId())
                 .orElseThrow(() -> new RuntimeException("Product variant not found"));
 
-        // optional stock check (non-blocking) - if available check available qty
-        Integer available = variant.getStockQty();
-        if (available != null && req.getQuantity() > available) {
+        if (variant.getStockQty() != null && req.getQuantity() > variant.getStockQty()) {
             return ApiResponse.error("Requested quantity exceeds available stock");
         }
 
-        // find existing cart item with same variant
-        Optional<CartItem> existingOpt = cartItemRepository.findByCartIdAndProductVariantIdAndBitDeletedFlagFalse(cart.getId(), variant.getId());
+        CartItem item = cartItemRepository
+                .findByCartIdAndProductVariantIdAndBitDeletedFlagFalse(
+                        cart.getId(), variant.getId())
+                .orElseGet(() -> {
+                    CartItem ci = new CartItem();
+                    ci.setCart(cart);
+                    ci.setProductVariant(variant);
+                    ci.setQuantity(0);
+                    ci.setPriceAtTime(
+                            variant.getPrice() != null ? variant.getPrice() : variant.getMrp()
+                    );
+                    return ci;
+                });
 
-        CartItem item;
-        if (existingOpt.isPresent()) {
-            item = existingOpt.get();
-            item.setQuantity(item.getQuantity() + req.getQuantity());
-        } else {
-            item = new CartItem();
-            item.setCart(cart);
-            item.setProductVariant(variant);
-            item.setQuantity(req.getQuantity());
-            // snapshot price: prefer price then mrp
-            BigDecimal price = variant.getPrice() != null ? variant.getPrice() : variant.getMrp();
-            item.setPriceAtTime(price);
-        }
+        item.setQuantity(item.getQuantity() + req.getQuantity());
         cartItemRepository.save(item);
 
-        // recalc cart totals
         recalcCart(cart);
 
-        // return cart token for guests so clients can keep it
-        CartDTO dto = toCartDto(cart);
-        if (cart.getCartToken() == null && currentUser == null) {
-            // should not happen; ensure token exists
-            dto.setCartToken(UUID.randomUUID().toString());
-        }
-        return ApiResponse.success(dto, "Added to cart");
+        return ApiResponse.success(toCartDto(cart), "Added to cart");
     }
+
+    /* =========================================================
+       UPDATE CART ITEM
+       ========================================================= */
 
     @Override
     @Transactional
-    public ApiResponse<?> updateCartItem(UpdateCartRequest req, CustomUserDetails currentUser) {
+    public ApiResponse<?> updateCartItem(UpdateCartRequest req, String guestId) {
+
         CartItem item = cartItemRepository.findById(req.getCartItemId())
                 .orElseThrow(() -> new RuntimeException("Cart item not found"));
 
-        // check ownership: if user logged in, must match; if guest, cartToken must be handled at controller level
-        if (currentUser != null && (item.getCart().getUser() == null || !item.getCart().getUser().getId().equals(currentUser.getId()))) {
-            throw new RuntimeException("Unauthorized");
-        }
+        validateOwnership(item.getCart(), guestId);
 
-        // update quantity with stock check
         ProductVariant variant = item.getProductVariant();
         if (variant.getStockQty() != null && req.getQuantity() > variant.getStockQty()) {
-            return ApiResponse.error("Requested quantity exceeds available stock");
+            return ApiResponse.error("Requested quantity exceeds stock");
         }
 
         item.setQuantity(req.getQuantity());
@@ -167,148 +156,194 @@ public class CartServiceImpl implements CartService {
         return ApiResponse.success(toCartDto(item.getCart()), "Cart updated");
     }
 
+    /* =========================================================
+       REMOVE ITEM
+       ========================================================= */
+
     @Override
     @Transactional
-    public ApiResponse<?> removeItem(Long cartItemId, CustomUserDetails currentUser) {
+    public ApiResponse<?> removeItem(Long cartItemId, String guestId) {
+
         CartItem item = cartItemRepository.findById(cartItemId)
                 .orElseThrow(() -> new RuntimeException("Cart item not found"));
 
-        // ownership
-        if (currentUser != null && (item.getCart().getUser() == null || !item.getCart().getUser().getId().equals(currentUser.getId()))) {
-            throw new RuntimeException("Unauthorized");
-        }
+        validateOwnership(item.getCart(), guestId);
 
         item.setBitDeletedFlag(true);
         cartItemRepository.save(item);
 
         recalcCart(item.getCart());
 
-        return ApiResponse.success("Item removed from cart");
+        return ApiResponse.success("Item removed");
     }
+
+    /* =========================================================
+       GET CART
+       ========================================================= */
 
     @Override
     @Transactional(readOnly = true)
-    public ApiResponse<?> getCart(String cartToken, CustomUserDetails currentUser) {
-        Cart cart = resolveCart(cartToken, currentUser);
+    public ApiResponse<?> getCart(String guestId) {
+
+        Cart cart = resolveCart(guestId);
+
         if (cart == null) {
-            // return empty cart DTO (with generated token for guest)
             CartDTO empty = new CartDTO();
-            empty.setCartToken(cartToken != null ? cartToken : UUID.randomUUID().toString());
+            empty.setCartToken(guestId);
             empty.setItems(Collections.emptyList());
             empty.setTotalItems(0);
             empty.setTotalAmount(BigDecimal.ZERO);
             return ApiResponse.success(empty, "Cart fetched");
         }
+
         return ApiResponse.success(toCartDto(cart), "Cart fetched");
     }
 
+    /* =========================================================
+       CLEAR CART
+       ========================================================= */
+
     @Override
     @Transactional
-    public ApiResponse<?> clearCart(String cartToken, CustomUserDetails currentUser) {
-        Cart cart = resolveCart(cartToken, currentUser);
+    public ApiResponse<?> clearCart(String guestId) {
+
+        Cart cart = resolveCart(guestId);
         if (cart == null) return ApiResponse.success("Cart already empty");
 
-        // soft delete items
+        validateOwnership(cart, guestId);
+
         List<CartItem> items = cartItemRepository.findByCartIdAndBitDeletedFlagFalse(cart.getId());
-        for (CartItem item : items) {
-            item.setBitDeletedFlag(true);
-        }
+        items.forEach(i -> i.setBitDeletedFlag(true));
         cartItemRepository.saveAll(items);
 
-        cart.setTotalAmount(0.0);
         cart.setTotalItems(0);
+        cart.setTotalAmount(BigDecimal.ZERO);
         cartRepository.save(cart);
 
         return ApiResponse.success("Cart cleared");
     }
 
+    /* =========================================================
+       MERGE GUEST CART INTO USER CART
+       ========================================================= */
+
     @Override
     @Transactional
-    public ApiResponse<?> mergeGuestCartIntoUserCart(String cartToken, CustomUserDetails currentUser) {
-        if (cartToken == null) return ApiResponse.error("cartToken required");
+    public ApiResponse<?> mergeGuestCartIntoUserCart(String guestId) {
 
-        Cart guestCart = cartRepository.findByCartTokenAndBitDeletedFlagFalse(cartToken).orElse(null);
+        CustomUserDetails user = userContext.getCurrentUser();
+        if (user == null) return ApiResponse.error("Login required");
+
+        Cart guestCart = cartRepository.findByCartTokenAndBitDeletedFlagFalse(guestId).orElse(null);
         if (guestCart == null) return ApiResponse.success("No guest cart found");
 
-        Cart userCart = cartRepository.findByUserIdAndBitDeletedFlagFalse(currentUser.getId())
-                .orElseGet(() -> {
-                    Cart c = new Cart();
-                    com.canvify.test.entity.User u = new com.canvify.test.entity.User();
-                    u.setId(currentUser.getId());
-                    c.setUser(u);
-                    c.setTotalAmount(0.0);
-                    c.setTotalItems(0);
-                    return cartRepository.save(c);
-                });
+        Cart userCart = getOrCreateCart(null);
 
-        List<CartItem> guestItems = cartItemRepository.findByCartIdAndBitDeletedFlagFalse(guestCart.getId());
+        List<CartItem> guestItems =
+                cartItemRepository.findByCartIdAndBitDeletedFlagFalse(guestCart.getId());
+
         for (CartItem gi : guestItems) {
-            Optional<CartItem> existing = cartItemRepository.findByCartIdAndProductVariantIdAndBitDeletedFlagFalse(userCart.getId(), gi.getProductVariant().getId());
-            if (existing.isPresent()) {
-                CartItem ui = existing.get();
+
+            CartItem ui = cartItemRepository
+                    .findByCartIdAndProductVariantIdAndBitDeletedFlagFalse(
+                            userCart.getId(), gi.getProductVariant().getId())
+                    .orElse(null);
+
+            if (ui != null) {
                 ui.setQuantity(ui.getQuantity() + gi.getQuantity());
                 cartItemRepository.save(ui);
+                gi.setBitDeletedFlag(true);
             } else {
-                // move guest item to user cart
                 gi.setCart(userCart);
                 cartItemRepository.save(gi);
             }
         }
 
-        // mark guest cart deleted (soft)
         guestCart.setBitDeletedFlag(true);
         cartRepository.save(guestCart);
 
-        // recalc user cart totals
         recalcCart(userCart);
 
         return ApiResponse.success(toCartDto(userCart), "Cart merged");
     }
 
-    // recalc totals and persist
-    private void recalcCart(Cart cart) {
-        List<CartItem> items = cartItemRepository.findByCartIdAndBitDeletedFlagFalse(cart.getId());
+    /* =========================================================
+       RECALCULATE TOTALS
+       ========================================================= */
 
-        int totalItems = items.stream().mapToInt(CartItem::getQuantity).sum();
+    private void recalcCart(Cart cart) {
+
+        List<CartItem> items =
+                cartItemRepository.findByCartIdAndBitDeletedFlagFalse(cart.getId());
+
+        int totalItems = items.stream()
+                .mapToInt(CartItem::getQuantity)
+                .sum();
+
         BigDecimal totalAmount = items.stream()
-                .map(i -> (i.getPriceAtTime() != null ? i.getPriceAtTime() : BigDecimal.ZERO).multiply(BigDecimal.valueOf(i.getQuantity())))
+                .map(i -> i.getPriceAtTime()
+                        .multiply(BigDecimal.valueOf(i.getQuantity())))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         cart.setTotalItems(totalItems);
-        cart.setTotalAmount(totalAmount.doubleValue());
+        cart.setTotalAmount(totalAmount);
         cartRepository.save(cart);
     }
 
+    /* =========================================================
+       DTO MAPPING
+       ========================================================= */
+
     private CartDTO toCartDto(Cart cart) {
+
         CartDTO dto = new CartDTO();
         dto.setCartId(cart.getId());
         dto.setCartToken(cart.getCartToken());
         dto.setUserId(cart.getUser() != null ? cart.getUser().getId() : null);
-        dto.setTotalItems(cart.getTotalItems() != null ? cart.getTotalItems() : 0);
-        dto.setTotalAmount(BigDecimal.valueOf(cart.getTotalAmount() != null ? cart.getTotalAmount() : 0.0));
+        dto.setTotalItems(cart.getTotalItems());
+        dto.setTotalAmount(cart.getTotalAmount());
 
-        List<CartItemDTO> items = cartItemRepository.findByCartIdAndBitDeletedFlagFalse(cart.getId())
+        List<CartItemDTO> items = cartItemRepository
+                .findByCartIdAndBitDeletedFlagFalse(cart.getId())
                 .stream()
                 .map(i -> {
+
+                    ProductVariant v = i.getProductVariant();
+
                     CartItemDTO it = new CartItemDTO();
                     it.setId(i.getId());
-                    ProductVariant v = i.getProductVariant();
+
+                    // ---------- Product ----------
+                    it.setProductId(v.getProduct().getId());
+                    it.setProductName(v.getProduct().getName());
+                    it.setProductSlug(v.getProduct().getSlug());   // ✅ NEW
+                    it.setProductImage(v.getProduct().getMainImage());
+
+                    // ---------- Variant ----------
                     it.setVariantId(v.getId());
+                    it.setVariantName(v.getName());                // ✅ NEW
                     it.setSku(v.getSku());
-                    it.setProductId(v.getProduct() != null ? v.getProduct().getId() : null);
-                    it.setProductName(v.getProduct() != null ? v.getProduct().getName() : null);
-                    it.setProductImage(v.getProduct() != null ? v.getProduct().getMainImage() : null);
-                    String label = v.getSize() != null ? v.getSize() : (v.getWeight() != null ? v.getWeight() : null);
+
+                    String label =
+                            v.getSize() != null ? v.getSize()
+                                    : (v.getWeight() != null ? v.getWeight() : null);
                     it.setVariantLabel(label);
+
+                    // ---------- Pricing ----------
                     it.setQuantity(i.getQuantity());
                     it.setPriceAtTime(i.getPriceAtTime());
-                    BigDecimal line = (i.getPriceAtTime() != null ? i.getPriceAtTime() : BigDecimal.ZERO).multiply(BigDecimal.valueOf(i.getQuantity()));
-                    it.setLineTotal(line);
+                    it.setLineTotal(
+                            i.getPriceAtTime().multiply(
+                                    BigDecimal.valueOf(i.getQuantity())
+                            )
+                    );
+
                     return it;
                 })
-                .collect(Collectors.toList());
+                .toList();
 
         dto.setItems(items);
         return dto;
     }
+
 }

@@ -1,15 +1,18 @@
 package com.canvify.test.controller.cart;
 
+import com.canvify.test.model.ApiResponse;
 import com.canvify.test.request.cart.AddToCartRequest;
 import com.canvify.test.request.cart.UpdateCartRequest;
-import com.canvify.test.model.ApiResponse;
-import com.canvify.test.security.CustomUserDetails;
 import com.canvify.test.service.cart.CartService;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/cart")
@@ -18,51 +21,125 @@ public class CartController {
 
     private final CartService cartService;
 
+    /* =========================================================
+       ADD TO CART
+       ========================================================= */
+
     @PostMapping("/add")
     public ResponseEntity<ApiResponse<?>> addToCart(
             @Valid @RequestBody AddToCartRequest req,
-            @AuthenticationPrincipal CustomUserDetails currentUser) {
+            @CookieValue(value = "GUEST_ID", required = false) String guestId,
+            HttpServletResponse response
+    ) {
 
-        return ResponseEntity.ok(cartService.addToCart(req, currentUser));
+        // Create guest ID if not present
+        if (guestId == null) {
+            guestId = UUID.randomUUID().toString();
+            setGuestCookie(response, guestId);
+        }
+
+        return ResponseEntity.ok(cartService.addToCart(req, guestId));
     }
+
+    /* =========================================================
+       UPDATE CART ITEM
+       ========================================================= */
 
     @PutMapping("/item")
     public ResponseEntity<ApiResponse<?>> updateCartItem(
             @Valid @RequestBody UpdateCartRequest req,
-            @AuthenticationPrincipal CustomUserDetails currentUser) {
-
-        return ResponseEntity.ok(cartService.updateCartItem(req, currentUser));
+            @CookieValue(value = "GUEST_ID", required = false) String guestId
+    ) {
+        return ResponseEntity.ok(cartService.updateCartItem(req, guestId));
     }
+
+    /* =========================================================
+       REMOVE CART ITEM
+       ========================================================= */
 
     @DeleteMapping("/item/{id}")
     public ResponseEntity<ApiResponse<?>> removeItem(
             @PathVariable("id") Long cartItemId,
-            @AuthenticationPrincipal CustomUserDetails currentUser) {
-
-        return ResponseEntity.ok(cartService.removeItem(cartItemId, currentUser));
+            @CookieValue(value = "GUEST_ID", required = false) String guestId
+    ) {
+        return ResponseEntity.ok(cartService.removeItem(cartItemId, guestId));
     }
+
+    /* =========================================================
+       GET CART
+       ========================================================= */
 
     @GetMapping
     public ResponseEntity<ApiResponse<?>> getCart(
-            @RequestParam(required = false) String cartToken,
-            @AuthenticationPrincipal CustomUserDetails currentUser) {
+            @CookieValue(value = "GUEST_ID", required = false) String guestId,
+            HttpServletResponse response
+    ) {
 
-        return ResponseEntity.ok(cartService.getCart(cartToken, currentUser));
+        // Ensure guest has an ID so cart persists
+        if (guestId == null) {
+            guestId = UUID.randomUUID().toString();
+            setGuestCookie(response, guestId);
+        }
+
+        return ResponseEntity.ok(cartService.getCart(guestId));
     }
+
+    /* =========================================================
+       CLEAR CART
+       ========================================================= */
 
     @DeleteMapping("/clear")
     public ResponseEntity<ApiResponse<?>> clearCart(
-            @RequestParam(required = false) String cartToken,
-            @AuthenticationPrincipal CustomUserDetails currentUser) {
-
-        return ResponseEntity.ok(cartService.clearCart(cartToken, currentUser));
+            @CookieValue(value = "GUEST_ID", required = false) String guestId
+    ) {
+        return ResponseEntity.ok(cartService.clearCart(guestId));
     }
+
+    /* =========================================================
+       MERGE GUEST CART INTO USER CART
+       (Call this immediately after login)
+       ========================================================= */
 
     @PostMapping("/merge")
     public ResponseEntity<ApiResponse<?>> mergeGuestCart(
-            @RequestParam String cartToken,
-            @AuthenticationPrincipal CustomUserDetails currentUser) {
+            @CookieValue(value = "GUEST_ID", required = false) String guestId,
+            HttpServletResponse response
+    ) {
 
-        return ResponseEntity.ok(cartService.mergeGuestCartIntoUserCart(cartToken, currentUser));
+        ApiResponse<?> result = cartService.mergeGuestCartIntoUserCart(guestId);
+
+        // Clear guest cookie after successful merge
+        deleteGuestCookie(response);
+
+        return ResponseEntity.ok(result);
+    }
+
+    /* =========================================================
+       COOKIE HELPERS
+       ========================================================= */
+
+    private void setGuestCookie(HttpServletResponse response, String guestId) {
+
+        ResponseCookie cookie = ResponseCookie.from("GUEST_ID", guestId)
+                .httpOnly(true)
+                .secure(true)        // set false only for local http testing
+                .path("/")
+                .maxAge(60 * 60 * 24 * 30) // 30 days
+                .sameSite("Lax")
+                .build();
+
+        response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
+    }
+
+    private void deleteGuestCookie(HttpServletResponse response) {
+
+        ResponseCookie cookie = ResponseCookie.from("GUEST_ID", "")
+                .httpOnly(true)
+                .secure(true)
+                .path("/")
+                .maxAge(0)
+                .build();
+
+        response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
     }
 }

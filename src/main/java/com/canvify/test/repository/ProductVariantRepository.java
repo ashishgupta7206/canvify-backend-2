@@ -9,4 +9,6 @@ import java.util.Optional;
 public interface ProductVariantRepository extends JpaRepository<ProductVariant, Long> {
     List<ProductVariant> findByProductIdAndBitDeletedFlagFalse(Long productId);
     Optional<ProductVariant> findBySku(String sku);
+    Optional<ProductVariant> findByIdAndBitDeletedFlagFalse(Long id);
+    List<ProductVariant>findByIdInAndBitDeletedFlagFalse(List<Long> id);
 }

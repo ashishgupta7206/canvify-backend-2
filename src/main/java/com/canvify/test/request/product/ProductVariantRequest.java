@@ -10,6 +10,7 @@ public class ProductVariantRequest {
 
     private Long id; // null for new variant
 
+    private String name;
     private String sku;
     private BigDecimal price;
     private BigDecimal mrp;

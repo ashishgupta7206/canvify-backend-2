@@ -31,6 +31,7 @@ public class ProductServiceImpl implements ProductService {
     private final ProductImageRepository imageRepo;
 
     @Override
+    @Transactional
     public ApiResponse<?> createProduct(CreateProductRequest req) {
 
         Category category = categoryRepo.findByIdAndBitDeletedFlagFalse(req.getCategoryId())
@@ -59,6 +60,7 @@ public class ProductServiceImpl implements ProductService {
             for (ProductVariantRequest v : req.getVariants()) {
 
                 ProductVariant variant = new ProductVariant();
+                variant.setName(v.getName());
                 variant.setProduct(product);
                 variant.setSku(v.getSku());
                 variant.setPrice(v.getPrice());
@@ -140,6 +142,7 @@ public class ProductServiceImpl implements ProductService {
 
                     ProductVariantResponse vr = new ProductVariantResponse();
                     vr.setId(variant.getId());
+                    vr.setName(variant.getName());
                     vr.setSku(variant.getSku());
                     vr.setPrice(variant.getPrice());
                     vr.setMrp(variant.getMrp());
@@ -407,22 +410,49 @@ public class ProductServiceImpl implements ProductService {
         return ApiResponse.success(response);
     }
 
+    public List<ProductResponse> getProductByIds(List<Long> ids) {
+
+        if (ids == null || ids.isEmpty()) {
+            throw new RuntimeException("Product IDs cannot be empty");
+        }
+
+        List<Product> products =
+                productRepo.findByIdInAndBitDeletedFlagFalse(ids);
+
+        if (products.isEmpty()) {
+            throw new RuntimeException("No products found");
+        }
+
+        List<ProductResponse> responses =
+                products.stream()
+                        .map(this::buildProductResponse)
+                        .toList();
+
+        return responses;
+    }
+
+//
+
+
+
     @Override
     public ApiResponse<?> getAllProducts(BaseIndexRequest request) {
 
         Page<Product> page = productRepo.findAll(request.buildPageable());
 
-        var dtos = page.getContent()
-                .stream()
-                .map(this::convertToDTO)
-                .collect(Collectors.toList());
+        List<ProductResponse> responses =
+                page.getContent()
+                        .stream()
+                        .map(this::buildProductResponse)
+                        .toList();
 
         return ApiResponse.success(
-                dtos,
+                responses,
                 "Products fetched",
                 new Pagination(page)
         );
     }
+
 
     @Override
     public ApiResponse<?> deleteProduct(Long id) {
@@ -484,6 +514,117 @@ public class ProductServiceImpl implements ProductService {
 
         return dto;
     }
+
+    @Override
+    public List<ProductAndProductVariantResponse> getProductAndProductVariant(
+            List<ProductVariantRow> request) {
+
+        if (request == null || request.isEmpty()) {
+            return List.of();
+        }
+
+        // 1️⃣ Collect unique productIds & variantIds
+        List<Long> productIds = request.stream()
+                .map(ProductVariantRow::getProductId)
+                .distinct()
+                .toList();
+
+        List<Long> variantIds = request.stream()
+                .map(ProductVariantRow::getVariantId)
+                .filter(v -> v != null)
+                .distinct()
+                .toList();
+
+        // 2️⃣ Fetch products
+        var productMap = productRepo.findByIdInAndBitDeletedFlagFalse(productIds)
+                .stream()
+                .collect(Collectors.toMap(Product::getId, p -> p));
+
+        // 3️⃣ Fetch variants
+        var variantMap = variantRepo.findByIdInAndBitDeletedFlagFalse(variantIds)
+                .stream()
+                .collect(Collectors.toMap(ProductVariant::getId, v -> v));
+
+        // 4️⃣ Build response per row
+        List<ProductAndProductVariantResponse> responses = new ArrayList<>();
+
+        for (ProductVariantRow row : request) {
+
+            Product product = productMap.get(row.getProductId());
+            if (product == null) continue;
+
+            ProductAndProductVariantResponse res =
+                    new ProductAndProductVariantResponse();
+
+            // ---------------- Product ----------------
+            res.setId(product.getId());
+            res.setName(product.getName());
+            res.setSlug(product.getSlug());
+            res.setShortDescription(product.getShortDescription());
+            res.setLongDescription(product.getLongDescription());
+            res.setMainImage(product.getMainImage());
+            res.setStatus(product.getStatus().name());
+
+            res.setCategoryId(product.getCategory().getId());
+            res.setCategoryName(product.getCategory().getName());
+
+            // ---------------- Product Images ----------------
+            List<ProductImageResponse> productImages =
+                    imageRepo.findByProductIdAndProductVariantIdIsNull(product.getId())
+                            .stream()
+                            .map(img -> {
+                                ProductImageResponse r = new ProductImageResponse();
+                                r.setId(img.getId());
+                                r.setImageUrl(img.getImageUrl());
+                                r.setSortOrder(img.getSortOrder());
+                                return r;
+                            })
+                            .toList();
+
+            res.setImages(productImages);
+
+            // ---------------- Single Variant ----------------
+            if (row.getVariantId() != null) {
+
+                ProductVariant variant = variantMap.get(row.getVariantId());
+                if (variant != null) {
+
+                    ProductVariantResponse vr = new ProductVariantResponse();
+                    vr.setId(variant.getId());
+                    vr.setName(variant.getName());
+                    vr.setSku(variant.getSku());
+                    vr.setPrice(variant.getPrice());
+                    vr.setMrp(variant.getMrp());
+                    vr.setDiscountPercent(variant.getDiscountPercent());
+                    vr.setStockQty(variant.getStockQty());
+                    vr.setSize(variant.getSize());
+                    vr.setWeight(variant.getWeight());
+                    vr.setColor(variant.getColor());
+                    vr.setBarcode(variant.getBarcode());
+
+                    List<ProductImageResponse> variantImages =
+                            imageRepo.findByProductVariantId(variant.getId())
+                                    .stream()
+                                    .map(img -> {
+                                        ProductImageResponse ir = new ProductImageResponse();
+                                        ir.setId(img.getId());
+                                        ir.setImageUrl(img.getImageUrl());
+                                        ir.setSortOrder(img.getSortOrder());
+                                        return ir;
+                                    })
+                                    .toList();
+
+                    vr.setImages(variantImages);
+                    res.setVariant(vr);
+                }
+            }
+
+            responses.add(res);
+        }
+
+        return responses;
+    }
+
 
     private ProductResponse buildProductResponse(Product product) {
 
@@ -561,3 +702,104 @@ public class ProductServiceImpl implements ProductService {
     }
 
 }
+
+
+//public List<ProductResponse> getProductVariantsByIds(List<Long> variantIds) {
+//
+//        if (variantIds == null || variantIds.isEmpty()) {
+//            throw new RuntimeException("Variant IDs cannot be empty");
+//        }
+//
+//        // 1️⃣ Fetch variants directly
+//        List<ProductVariant> variants =
+//                variantRepo.findByIdInAndBitDeletedFlagFalse(variantIds);
+//
+//        if (variants.isEmpty()) {
+//            throw new RuntimeException("No variants found");
+//        }
+//
+//        // 2️⃣ Group variants by Product
+//        return variants.stream()
+//                .collect(Collectors.groupingBy(ProductVariant::getProduct))
+//                .entrySet()
+//                .stream()
+//                .map(entry -> {
+//
+//                    Product product = entry.getKey();
+//                    List<ProductVariant> productVariants = entry.getValue();
+//
+//                    ProductResponse response = new ProductResponse();
+//
+//                    response.setId(product.getId());
+//                    response.setName(product.getName());
+//                    response.setSlug(product.getSlug());
+//                    response.setShortDescription(product.getShortDescription());
+//                    response.setLongDescription(product.getLongDescription());
+//                    response.setMainImage(product.getMainImage());
+//                    response.setStatus(product.getStatus().name());
+//
+//                    response.setCategoryId(product.getCategory().getId());
+//                    response.setCategoryName(product.getCategory().getName());
+//
+//                    // --------------------------
+//                    // Product-level images
+//                    // --------------------------
+//                    List<ProductImageResponse> productImages =
+//                            imageRepo.findByProductIdAndProductVariantIdIsNull(product.getId())
+//                                    .stream()
+//                                    .map(img -> {
+//                                        ProductImageResponse r = new ProductImageResponse();
+//                                        r.setId(img.getId());
+//                                        r.setImageUrl(img.getImageUrl());
+//                                        r.setSortOrder(img.getSortOrder());
+//                                        return r;
+//                                    })
+//                                    .toList();
+//
+//                    response.setImages(productImages);
+//
+//                    // --------------------------
+//                    // ONLY requested variants
+//                    // --------------------------
+//                    List<ProductVariantResponse> variantResponses =
+//                            productVariants.stream()
+//                                    .map(variant -> {
+//
+//                                        ProductVariantResponse vr = new ProductVariantResponse();
+//                                        vr.setId(variant.getId());
+//                                        vr.setName(variant.getName());
+//                                        vr.setSku(variant.getSku());
+//                                        vr.setPrice(variant.getPrice());
+//                                        vr.setMrp(variant.getMrp());
+//                                        vr.setDiscountPercent(variant.getDiscountPercent());
+//                                        vr.setStockQty(variant.getStockQty());
+//                                        vr.setSize(variant.getSize());
+//                                        vr.setWeight(variant.getWeight());
+//                                        vr.setColor(variant.getColor());
+//                                        vr.setBarcode(variant.getBarcode());
+//
+//                                        List<ProductImageResponse> variantImages =
+//                                                imageRepo.findByProductVariantId(variant.getId())
+//                                                        .stream()
+//                                                        .map(img -> {
+//                                                            ProductImageResponse ir = new ProductImageResponse();
+//                                                            ir.setId(img.getId());
+//                                                            ir.setImageUrl(img.getImageUrl());
+//                                                            ir.setSortOrder(img.getSortOrder());
+//                                                            return ir;
+//                                                        })
+//                                                        .toList();
+//
+//                                        vr.setImages(variantImages);
+//
+//                                        return vr;
+//                                    })
+//                                    .toList();
+//
+//                    response.setVariants(variantResponses);
+//
+//                    return response;
+//
+//                })
+//                .toList();
+//    }

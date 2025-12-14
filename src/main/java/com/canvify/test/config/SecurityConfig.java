@@ -59,13 +59,22 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authenticationProvider(authenticationProvider())
                 .authorizeHttpRequests(auth -> auth
+
+                        // ✅ PUBLIC AUTH APIs
                         .requestMatchers("/api/auth/**").permitAll()
+
+                        // ✅ PUBLIC CART APIs (guest allowed)
+                        .requestMatchers("/api/cart/**").permitAll()
+
+                        // 🔐 Everything else requires authentication
                         .anyRequest().authenticated()
                 );
 
+        // JWT filter still applies, but must NOT block missing token
         http.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
+
 
 }

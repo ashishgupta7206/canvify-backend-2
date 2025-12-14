@@ -3,23 +3,22 @@ package com.canvify.test.service.cart;
 import com.canvify.test.model.ApiResponse;
 import com.canvify.test.request.cart.AddToCartRequest;
 import com.canvify.test.request.cart.UpdateCartRequest;
-import com.canvify.test.security.CustomUserDetails;
 
 public interface CartService {
 
-    ApiResponse<?> addToCart(AddToCartRequest req, CustomUserDetails currentUser);
+    ApiResponse<?> addToCart(AddToCartRequest req, String guestId);
 
-    ApiResponse<?> updateCartItem(UpdateCartRequest req, CustomUserDetails currentUser);
+    ApiResponse<?> updateCartItem(UpdateCartRequest req, String guestId);
 
-    ApiResponse<?> removeItem(Long cartItemId, CustomUserDetails currentUser);
+    ApiResponse<?> removeItem(Long cartItemId, String guestId);
 
-    ApiResponse<?> getCart(String cartToken, CustomUserDetails currentUser);
+    ApiResponse<?> getCart(String guestId);
 
-    ApiResponse<?> clearCart(String cartToken, CustomUserDetails currentUser);
+    ApiResponse<?> clearCart(String guestId);
 
     /**
-     * Merge a guest cart (cartToken) into the logged-in user's cart.
-     * Called after successful login on frontend.
+     * Merge guest cart into logged-in user's cart.
+     * Called immediately after successful login.
      */
-    ApiResponse<?> mergeGuestCartIntoUserCart(String cartToken, CustomUserDetails currentUser);
+    ApiResponse<?> mergeGuestCartIntoUserCart(String guestId);
 }
