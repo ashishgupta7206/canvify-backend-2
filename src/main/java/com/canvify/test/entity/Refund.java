@@ -2,6 +2,7 @@ package com.canvify.test.entity;
 
 import com.canvify.test.entity.audit.Auditable;
 import com.canvify.test.enums.PaymentStatus;
+import com.canvify.test.enums.RefundStatus;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -13,7 +14,12 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "t_refund")
+@Table(name = "t_refund",
+        indexes = {
+                @Index(name = "idx_refund_provider_ref", columnList = "provider_refund_id"),
+                @Index(name = "idx_refund_payment", columnList = "payment_id")
+        }
+)
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
@@ -24,25 +30,36 @@ public class Refund extends Auditable {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    // Parent payment
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "payment_id")
+    @JoinColumn(name = "payment_id", nullable = false)
     @JsonIgnore
     private Payment payment;
 
+    // Optional return linkage
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "return_id")
     @JsonIgnore
     private Return returnRequest;
 
-    @Column(name = "refund_reference_id")
-    private String refundReferenceId;
+    // Razorpay refund id
+    @Column(name = "provider_refund_id", unique = true)
+    private String providerRefundId;
 
-    @Column(name = "refunded_amount", precision = 10, scale = 2)
-    private BigDecimal refundedAmount;
+    // Razorpay payment id
+    @Column(name = "provider_payment_id", nullable = false)
+    private String providerPaymentId;
 
-    @Column(name = "refund_date")
-    private LocalDateTime refundDate;
+    @Column(name = "refund_amount", precision = 10, scale = 2, nullable = false)
+    private BigDecimal refundAmount;
 
     @Enumerated(EnumType.STRING)
-    private PaymentStatus status;
+    @Column(nullable = false)
+    private RefundStatus status;
+
+    @Column(name = "failure_reason", columnDefinition = "TEXT")
+    private String failureReason;
+
+    @Column(name = "refunded_on")
+    private LocalDateTime refundedOn;
 }

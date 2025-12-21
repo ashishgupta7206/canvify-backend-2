@@ -5,6 +5,6 @@ import lombok.Data;
 @Data
 public class RefundResponseDTO {
     private Long refundId;
-    private String refundReferenceId; // provider refund id
+    private String providerRefundId;
     private String status;
 }

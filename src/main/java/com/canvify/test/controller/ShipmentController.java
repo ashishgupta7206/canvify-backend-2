@@ -1,4 +1,4 @@
-package com.canvify.test.controller.shipment;
+package com.canvify.test.controller;
 
 import com.canvify.test.model.ApiResponse;
 import com.canvify.test.request.shipment.CreateShipmentRequest;

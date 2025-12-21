@@ -1,4 +1,4 @@
-package com.canvify.test.controller.cart;
+package com.canvify.test.controller;
 
 import com.canvify.test.model.ApiResponse;
 import com.canvify.test.request.cart.AddToCartRequest;

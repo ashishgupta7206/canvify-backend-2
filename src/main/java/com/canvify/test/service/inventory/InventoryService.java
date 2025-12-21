@@ -15,4 +15,7 @@ public interface InventoryService {
     ApiResponse<?> getStock(Long variantId);
 
     void adjustStockFromLedger(Long variantId);
+
+    //system generated release reserved stock
+    void systemReleaseReservedStock(Long variantId, int qty, Long orderId);
 }

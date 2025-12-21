@@ -180,9 +180,7 @@ public class DeliveryAssignmentServiceImpl implements DeliveryAssignmentService 
         h.setOrder(order);
         h.setOldStatus(oldStatus);
         h.setNewStatus(newStatus);
-        h.setUpdatedBy(updatedBy);
         h.setRemark(remark);
-        h.setUpdatedOn(LocalDateTime.now());
         historyRepository.save(h);
     }
 

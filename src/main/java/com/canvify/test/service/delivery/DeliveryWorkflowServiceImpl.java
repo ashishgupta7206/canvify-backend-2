@@ -65,9 +65,7 @@ public class DeliveryWorkflowServiceImpl implements DeliveryWorkflowService {
         h.setOrder(order);
         h.setOldStatus(oldOrder);
         h.setNewStatus(order.getStatus());
-        h.setUpdatedBy("partner-webhook");
         h.setRemark(req.getRemark());
-        h.setUpdatedOn(LocalDateTime.now());
         historyRepository.save(h);
 
         return ApiResponse.success("Webhook processed");

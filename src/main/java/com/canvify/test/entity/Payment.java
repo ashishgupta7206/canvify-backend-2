@@ -13,8 +13,15 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+
 @Entity
-@Table(name = "t_payment")
+@Table(
+        name = "t_payment",
+        indexes = {
+                @Index(name = "idx_payment_provider_order", columnList = "provider_order_id"),
+                @Index(name = "idx_payment_provider_payment", columnList = "provider_payment_id")
+        }
+)
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
@@ -25,27 +32,57 @@ public class Payment extends Auditable {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "order_id")
+    // -----------------------------
+    // RELATIONS
+    // -----------------------------
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "order_id", nullable = false)
     @JsonIgnore
     private Orders order;
 
+    // -----------------------------
+    // PROVIDER DETAILS
+    // -----------------------------
     @Enumerated(EnumType.STRING)
+    @Column(name = "payment_provider", nullable = false)
     private PaymentProvider paymentProvider;
 
-    @Column(name = "payment_reference_id")
-    private String paymentReferenceId;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "payment_method", nullable = false)
+    private PaymentMethod paymentMethod;
 
-    @Column(name = "amount", precision = 10, scale = 2)
+    // Razorpay order_id (created before payment)
+    @Column(name = "provider_order_id", length = 100, unique = true)
+    private String providerOrderId;
+
+    // Razorpay payment_id (received in webhook)
+    @Column(name = "provider_payment_id", length = 100, unique = true)
+    private String providerPaymentId;
+
+    // -----------------------------
+    // AMOUNT DETAILS
+    // -----------------------------
+    @Column(name = "amount", precision = 10, scale = 2, nullable = false)
     private BigDecimal amount;
 
-    @Enumerated(EnumType.STRING)
-    private PaymentStatus status;
+    @Column(name = "currency", length = 10, nullable = false)
+    private String currency = "INR";
 
+    // -----------------------------
+    // STATUS
+    // -----------------------------
     @Enumerated(EnumType.STRING)
-    private PaymentMethod paymentMethod;
+    @Column(name = "status", nullable = false)
+    private PaymentStatus status;
 
     @Column(name = "payment_date")
     private LocalDateTime paymentDate;
+
+    // -----------------------------
+    // FAILURE DETAILS (optional)
+    // -----------------------------
+    @Column(name = "failure_reason", columnDefinition = "TEXT")
+    private String failureReason;
 }
+
 

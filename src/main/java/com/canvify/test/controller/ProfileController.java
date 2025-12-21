@@ -1,9 +1,8 @@
-package com.canvify.test.controller.profile;
+package com.canvify.test.controller;
 
 import com.canvify.test.dto.profile.ProfileDTO;
 import com.canvify.test.model.ApiResponse;
 import com.canvify.test.request.profile.ProfileRequest;
-import com.canvify.test.security.CustomUserDetails;
 import com.canvify.test.service.profile.ProfileService;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;

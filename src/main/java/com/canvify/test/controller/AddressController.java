@@ -1,4 +1,4 @@
-package com.canvify.test.controller.profile;
+package com.canvify.test.controller;
 
 import com.canvify.test.dto.profile.AddressDTO;
 import com.canvify.test.model.ApiResponse;

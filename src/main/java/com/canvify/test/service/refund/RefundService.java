@@ -6,5 +6,4 @@ import com.canvify.test.model.ApiResponse;
 
 public interface RefundService {
     ApiResponse<RefundResponseDTO> initiateRefund(RefundRequest req);
-    ApiResponse<?> getRefundsForPayment(Long paymentId);
 }

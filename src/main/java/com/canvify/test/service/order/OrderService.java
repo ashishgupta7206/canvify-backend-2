@@ -7,11 +7,11 @@ import com.canvify.test.security.CustomUserDetails;
 
 public interface OrderService {
 
-    ApiResponse<?> placeOrder(CreateOrderRequest req, CustomUserDetails user);
+    ApiResponse<?> placeOrder(CreateOrderRequest req);
 
-    ApiResponse<?> getOrder(Long orderId, CustomUserDetails user);
+    ApiResponse<?> getOrder(Long orderId);
 
-    ApiResponse<?> getMyOrders(CustomUserDetails user);
+    ApiResponse<?> getMyOrders();
 
-    ApiResponse<?> cancelOrder(Long orderId, CustomUserDetails user);
+    ApiResponse<?> cancelOrder(Long orderId);
 }

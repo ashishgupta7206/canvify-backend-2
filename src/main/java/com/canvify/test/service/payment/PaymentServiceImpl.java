@@ -6,16 +6,17 @@ import com.canvify.test.entity.*;
 import com.canvify.test.enums.PaymentStatus;
 import com.canvify.test.enums.OrderStatus;
 import com.canvify.test.integration.PaymentProviderClient;
-import com.canvify.test.repository.OrderRepository;
-import com.canvify.test.repository.PaymentRepository;
-import com.canvify.test.repository.RefundRepository;
+import com.canvify.test.repository.*;
 import com.canvify.test.request.payment.CreatePaymentRequest;
 import com.canvify.test.model.ApiResponse;
+import com.canvify.test.service.inventory.InventoryService;
+import com.canvify.test.service.orderstatus.OrderStatusManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -26,111 +27,170 @@ public class PaymentServiceImpl implements PaymentService {
     private final PaymentRepository paymentRepository;
     private final OrderRepository orderRepository;
     private final RefundRepository refundRepository;
-    private final org.springframework.context.ApplicationContext ctx; // to get provider bean by name
+    private final CouponUsageRepository couponUsageRepository;
+    private final InventoryService inventoryService;
+    private final OrderStatusManager orderStatusManager;
+    private final OrderItemRepository orderItemRepository;
+    private final org.springframework.context.ApplicationContext ctx;
 
+    // -------------------------------------------------
+    // CREATE PAYMENT (CLIENT SIDE INITIATION)
+    // -------------------------------------------------
     @Override
     @Transactional
     public ApiResponse<?> createPayment(CreatePaymentRequest req) {
-        Orders order = orderRepository.findById(req.getOrderId())
+
+        Orders order = orderRepository.findByIdAndBitDeletedFlagFalse(req.getOrderId())
                 .orElseThrow(() -> new RuntimeException("Order not found"));
 
-        // optionally validate payable amount matches
-        if (req.getAmount() == null || req.getAmount().compareTo(order.getPayableAmount()) != 0) {
-            // you can allow mismatch or reject — here we ensure equality
+        if (order.getStatus() != OrderStatus.PLACED) {
+            return ApiResponse.error("Order not eligible for payment");
+        }
+
+        if (req.getAmount().compareTo(order.getPayableAmount()) != 0) {
             return ApiResponse.error("Amount mismatch");
         }
 
-        // create a Payment row with status PENDING
-        Payment p = new Payment();
-        p.setOrder(order);
-        p.setPaymentProvider(req.getProvider());
-        p.setPaymentMethod(req.getMethod());
-        p.setAmount(req.getAmount());
-        p.setStatus(PaymentStatus.PENDING);
-        p = paymentRepository.save(p);
+        Payment payment = new Payment();
+        payment.setOrder(order);
+        payment.setPaymentProvider(req.getProvider());
+        payment.setPaymentMethod(req.getMethod());
+        payment.setAmount(req.getAmount());
+        payment.setStatus(PaymentStatus.PENDING);
 
-        // call provider adapter
-        String providerBeanName = req.getProvider().name(); // e.g. RAZORPAY -> bean named "RAZORPAY"
-        PaymentProviderClient providerClient = ctx.getBean(providerBeanName, PaymentProviderClient.class);
+        payment = paymentRepository.save(payment);
 
-        String providerOrderId = "ORD-" + UUID.randomUUID(); // receipt / id for provider
-        Map<String, Object> res = providerClient.createPaymentOrder(providerOrderId, req.getAmount(), req.getCurrency(), providerOrderId);
+        PaymentProviderClient provider =
+                ctx.getBean(req.getProvider().name(), PaymentProviderClient.class);
 
-        // save provider reference id
-        String providerOrderRef = (String) res.get("orderId");
-        p.setPaymentReferenceId(providerOrderRef);
-        paymentRepository.save(p);
+        String providerOrderId = "ORD-" + UUID.randomUUID();
+
+        Map<String, Object> res = provider.createPaymentOrder(
+                providerOrderId,
+                req.getAmount(),
+                req.getCurrency(),
+                providerOrderId
+        );
+
+        payment.setProviderOrderId((String) res.get("orderId"));
+        paymentRepository.save(payment);
 
         PaymentResponseDTO dto = new PaymentResponseDTO();
-        dto.setPaymentId(p.getId());
-        dto.setPaymentReferenceId(providerOrderRef);
+        dto.setPaymentId(payment.getId());
+        dto.setPaymentReferenceId(payment.getProviderOrderId());
         dto.setProviderClientToken((String) res.get("clientSecret"));
 
-        return ApiResponse.success(dto, "Payment created");
+        return ApiResponse.success(dto, "Payment initiated");
     }
 
+    // -------------------------------------------------
+    // RAZORPAY WEBHOOK
+    // -------------------------------------------------
     @Override
     @Transactional
-    public ApiResponse<?> handleProviderWebhook(ProviderWebhookDTO webhook, String signatureHeader, String rawPayload) {
-        // get provider client based on webhook payload or configured provider
-        // For simplicity assume the payload contains provider name in webhook.event or route uses provider-specific webhook endpoint
-        // Stub: pick RAZORPAY
-        PaymentProviderClient client = ctx.getBean("RAZORPAY", PaymentProviderClient.class);
+    public ApiResponse<?> handleProviderWebhook(
+            ProviderWebhookDTO webhook,
+            String signatureHeader,
+            String rawPayload
+    ) {
 
-        // verify signature
-        boolean valid = client.verifyWebhookSignature(rawPayload, signatureHeader);
-        if (!valid) return ApiResponse.error("Invalid webhook signature");
+        PaymentProviderClient client =
+                ctx.getBean("RAZORPAY", PaymentProviderClient.class);
 
-        // parse the event — this is simplified
-        Map<String,Object> data = webhook.getData();
+        if (!client.verifyWebhookSignature(rawPayload, signatureHeader)) {
+            return ApiResponse.error("Invalid webhook signature");
+        }
+
         String event = webhook.getEvent();
+        Map<String, Object> data = webhook.getData();
 
-        // Example: payment captured event with payment id
-        if ("payment.captured".equalsIgnoreCase(event) || "payment.success".equalsIgnoreCase(event)) {
-            String providerPaymentRef = (String) data.get("payment_id"); // depends on provider payload
-            // find Payment
-            Payment payment = paymentRepository.findByPaymentReferenceIdAndBitDeletedFlagFalse(providerPaymentRef)
-                    .orElseThrow(() -> new RuntimeException("Payment not found"));
+        String providerPaymentId = (String) data.get("payment_id");
 
-            // update payment
+        Payment payment = paymentRepository
+                .findByProviderPaymentIdAndBitDeletedFlagFalse(providerPaymentId)
+                .orElseThrow(() -> new RuntimeException("Payment not found"));
+
+        if (payment.getStatus() == PaymentStatus.SUCCESS) {
+            return ApiResponse.success("Already processed");
+        }
+
+        payment.setProviderPaymentId(providerPaymentId);
+
+        Orders order = payment.getOrder();
+
+        // ========================
+        // PAYMENT SUCCESS
+        // ========================
+        if ("payment.captured".equalsIgnoreCase(event)
+                || "payment.success".equalsIgnoreCase(event)) {
+
             payment.setStatus(PaymentStatus.SUCCESS);
-            payment.setPaymentDate(java.time.LocalDateTime.now());
+            payment.setPaymentDate(LocalDateTime.now());
             paymentRepository.save(payment);
 
-            // update order payment status
-            Orders order = payment.getOrder();
-            order.setPaymentStatus(PaymentStatus.SUCCESS);
-            // optionally move order status forward
-            order.setStatus(OrderStatus.CONFIRMED);
-            orderRepository.save(order);
+            // 🔁 INVENTORY: RESERVE → SALE
+            List<OrderItem> items =
+                    orderItemRepository.findByOrderIdAndBitDeletedFlagFalse(order.getId());
 
-            // add order status history (call OrderStatusHistoryService or repository)
-            // omitted here for brevity
+            for (OrderItem item : items) {
+                inventoryService.reduceStock(
+                        item.getProductVariant().getId(),
+                        item.getQuantity(),
+                        "Order paid",
+                        order.getId()
+                );
+            }
+
+            // 🔁 ORDER STATUS (STATE MACHINE)
+            orderStatusManager.changeStatus(
+                    order,
+                    OrderStatus.PAID,
+                    "Payment successful"
+            );
 
             return ApiResponse.success("Payment processed");
         }
 
+        // ========================
+        // PAYMENT FAILED
+        // ========================
         if ("payment.failed".equalsIgnoreCase(event)) {
-            String providerPaymentRef = (String) data.get("payment_id");
-            Payment payment = paymentRepository.findByPaymentReferenceIdAndBitDeletedFlagFalse(providerPaymentRef)
-                    .orElseThrow(() -> new RuntimeException("Payment not found"));
 
             payment.setStatus(PaymentStatus.FAILED);
             paymentRepository.save(payment);
 
-            Orders order = payment.getOrder();
-            order.setPaymentStatus(PaymentStatus.FAILED);
-            orderRepository.save(order);
+            // 🔁 RELEASE RESERVED STOCK
+            List<OrderItem> items =
+                    orderItemRepository.findByOrderIdAndBitDeletedFlagFalse(order.getId());
 
-            return ApiResponse.success("Payment failed processed");
+            for (OrderItem item : items) {
+                inventoryService.releaseReservedStock(
+                        item.getProductVariant().getId(),
+                        item.getQuantity(),
+                        order.getId()
+                );
+            }
+
+            // 🔁 ROLLBACK COUPON
+            couponUsageRepository.findByOrderIdAndBitDeletedFlagFalse(order.getId())
+                    .ifPresent(u -> {
+                        u.setBitDeletedFlag(true);
+                        couponUsageRepository.save(u);
+                    });
+
+            return ApiResponse.success("Payment failed handled");
         }
 
         return ApiResponse.success("Webhook ignored");
     }
 
+    // -------------------------------------------------
+    // LIST PAYMENTS FOR ORDER
+    // -------------------------------------------------
     @Override
     public ApiResponse<?> getPaymentsForOrder(Long orderId) {
-        var list = paymentRepository.findByOrderIdAndBitDeletedFlagFalse(orderId);
-        return ApiResponse.success(list);
+        return ApiResponse.success(
+                paymentRepository.findByOrderIdAndBitDeletedFlagFalse(orderId)
+        );
     }
 }

@@ -1,4 +1,4 @@
-package com.canvify.test.controller.refund;
+package com.canvify.test.controller;
 
 import com.canvify.test.request.refund.RefundRequest;
 import com.canvify.test.model.ApiResponse;
@@ -19,8 +19,8 @@ public class RefundController {
         return ResponseEntity.ok(refundService.initiateRefund(req));
     }
 
-    @GetMapping("/payment/{paymentId}")
-    public ResponseEntity<ApiResponse<?>> getForPayment(@PathVariable Long paymentId) {
-        return ResponseEntity.ok(refundService.getRefundsForPayment(paymentId));
-    }
+//    @GetMapping("/payment/{paymentId}")
+//    public ResponseEntity<ApiResponse<?>> getForPayment(@PathVariable Long paymentId) {
+//        return ResponseEntity.ok(refundService.getRefundsForPayment(paymentId));
+//    }
 }

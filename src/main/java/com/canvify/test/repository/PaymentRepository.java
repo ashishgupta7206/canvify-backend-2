@@ -7,6 +7,7 @@ import java.util.Optional;
 import java.util.List;
 
 public interface PaymentRepository extends JpaRepository<Payment, Long> {
-    Optional<Payment> findByPaymentReferenceIdAndBitDeletedFlagFalse(String paymentReferenceId);
     List<Payment> findByOrderIdAndBitDeletedFlagFalse(Long orderId);
+    Optional<Payment> findByProviderPaymentIdAndBitDeletedFlagFalse(String providerPaymentId);
+
 }

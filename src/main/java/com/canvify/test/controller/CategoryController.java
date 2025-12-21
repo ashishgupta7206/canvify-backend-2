@@ -1,4 +1,4 @@
-package com.canvify.test.controller.category;
+package com.canvify.test.controller;
 
 import com.canvify.test.model.ApiResponse;
 import com.canvify.test.model.BaseIndexRequest;
@@ -7,7 +7,6 @@ import com.canvify.test.request.category.CategoryUpdateRequest;
 import com.canvify.test.service.category.CategoryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.validation.Valid;

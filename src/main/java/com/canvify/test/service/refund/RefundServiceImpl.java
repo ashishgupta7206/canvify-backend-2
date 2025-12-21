@@ -1,18 +1,22 @@
 package com.canvify.test.service.refund;
 
 import com.canvify.test.dto.refund.RefundResponseDTO;
-import com.canvify.test.entity.Refund;
 import com.canvify.test.entity.Payment;
+import com.canvify.test.entity.Refund;
 import com.canvify.test.enums.PaymentStatus;
+import com.canvify.test.enums.RefundStatus;
 import com.canvify.test.integration.PaymentProviderClient;
 import com.canvify.test.repository.PaymentRepository;
 import com.canvify.test.repository.RefundRepository;
 import com.canvify.test.request.refund.RefundRequest;
 import com.canvify.test.model.ApiResponse;
+import com.canvify.test.service.orderstatus.OrderStatusManager;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationContext; // ✅ FIXED
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.Map;
 
 @Service
@@ -21,56 +25,74 @@ public class RefundServiceImpl implements RefundService {
 
     private final RefundRepository refundRepository;
     private final PaymentRepository paymentRepository;
-    private final org.springframework.context.ApplicationContext ctx;
+    private final OrderStatusManager orderStatusManager;
+    private final ApplicationContext ctx; // ✅ FIXED
 
     @Override
     @Transactional
     public ApiResponse<RefundResponseDTO> initiateRefund(RefundRequest req) {
+
         Payment payment = paymentRepository.findById(req.getPaymentId())
                 .orElseThrow(() -> new RuntimeException("Payment not found"));
 
-        // create Refund record with status pending
+        // Prevent duplicate refunds
+        boolean exists = refundRepository
+                .existsByPaymentIdAndStatus(payment.getId(), RefundStatus.PENDING);
+
+        if (exists) {
+            return ApiResponse.error("Refund already in progress");
+        }
+
         Refund refund = new Refund();
         refund.setPayment(payment);
-        // optional: link returnRequest if provided
-        // refund.setReturnRequest(...);
-        refund.setRefundedAmount(req.getAmount());
-        refund.setRefundDate(java.time.LocalDateTime.now());
-        refund.setStatus(PaymentStatus.PENDING);
+
+        // ❌ OLD (wrong)
+        // refund.setProviderPaymentId(payment.getPaymentReferenceId());
+
+        // ✅ NEW (correct)
+        refund.setProviderPaymentId(payment.getProviderPaymentId());
+
+        refund.setRefundAmount(req.getAmount());
+        refund.setStatus(RefundStatus.PENDING);
         refund = refundRepository.save(refund);
 
-        // call provider
-        String providerBean = payment.getPaymentProvider().name();
-        PaymentProviderClient client = ctx.getBean(providerBean, PaymentProviderClient.class);
+        PaymentProviderClient client =
+                ctx.getBean(payment.getPaymentProvider().name(), PaymentProviderClient.class);
 
-        Map<String,Object> res = client.refundPayment(payment.getPaymentReferenceId(), req.getAmount(), req.getReason());
+        // ❌ OLD
+        // client.refundPayment(payment.getPaymentReferenceId(), ...)
 
-        String refundId = (String) res.get("refundId");
-        String status = (String) res.getOrDefault("status", "PENDING");
+        // ✅ NEW (Razorpay requires payment_id)
+        Map<String, Object> res =
+                client.refundPayment(
+                        payment.getProviderPaymentId(),
+                        req.getAmount(),
+                        req.getReason()
+                );
 
-        refund.setRefundReferenceId(refundId);
-        refund.setStatus(PaymentStatus.valueOf(status));
-        refundRepository.save(refund);
+        String providerRefundId = (String) res.get("refundId");
+        String status = String.valueOf(res.get("status"));
 
-        // update payment status if fully refunded
-        if ("SUCCESS".equalsIgnoreCase(status) || "REFUNDED".equalsIgnoreCase(status)) {
+        refund.setProviderRefundId(providerRefundId);
+
+        if ("SUCCESS".equalsIgnoreCase(status)) {
+            refund.setStatus(RefundStatus.SUCCESS);
+            refund.setRefundedOn(LocalDateTime.now());
+
             payment.setStatus(PaymentStatus.REFUNDED);
             paymentRepository.save(payment);
-
-            // optionally update order and order status history
+        } else {
+            refund.setStatus(RefundStatus.FAILED);
+            refund.setFailureReason("Provider refund failed");
         }
+
+        refundRepository.save(refund);
 
         RefundResponseDTO dto = new RefundResponseDTO();
         dto.setRefundId(refund.getId());
-        dto.setRefundReferenceId(refundId);
-        dto.setStatus(status);
+        dto.setProviderRefundId(providerRefundId);
+        dto.setStatus(refund.getStatus().name());
 
-        return ApiResponse.success(dto, "Refund initiated");
-    }
-
-    @Override
-    public ApiResponse<?> getRefundsForPayment(Long paymentId) {
-        var list = refundRepository.findByPaymentIdAndBitDeletedFlagFalse(paymentId);
-        return ApiResponse.success(list);
+        return ApiResponse.success(dto, "Refund processed");
     }
 }
