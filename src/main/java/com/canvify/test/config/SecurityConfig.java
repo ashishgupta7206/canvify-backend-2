@@ -66,6 +66,12 @@ public class SecurityConfig {
                         // ✅ PUBLIC CART APIs (guest allowed)
                         .requestMatchers("/api/cart/**").permitAll()
 
+                        // ✅ PUBLIC CART APIs (guest allowed)
+                        .requestMatchers("/api/categories/**").permitAll()
+
+                        // ✅ PUBLIC CART APIs (guest allowed)
+                        .requestMatchers("/api/products/**").permitAll()
+
                         // 🔐 Everything else requires authentication
                         .anyRequest().authenticated()
                 );
