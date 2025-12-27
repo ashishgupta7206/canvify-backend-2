@@ -172,7 +172,7 @@ public class AuthServiceImpl implements AuthService {
         String username = generateNextUsername();
 
         Role role = roleRepository.findByName("ROLE_USER")
-                .orElseThrow(() -> new RuntimeException("Role missing"));
+                .orElseThrow(() -> new NotFoundException("ROLE_USER not configured"));
 
         User user = new User();
         user.setName(req.getName());
@@ -211,11 +211,14 @@ public class AuthServiceImpl implements AuthService {
 
     private void validateOtp(User user, String otp) {
 
-        if (user.getOtp() == null || !user.getOtp().equals(otp))
-            throw new RuntimeException("Invalid OTP");
+        if (user.getOtp() == null || !user.getOtp().equals(otp)) {
+            throw new BadRequestException("Invalid OTP");
+        }
 
-        if (user.getOtpExpiry() == null || user.getOtpExpiry().isBefore(LocalDateTime.now()))
-            throw new RuntimeException("OTP expired");
+        if (user.getOtpExpiry() == null || user.getOtpExpiry().isBefore(LocalDateTime.now())) {
+            throw new BadRequestException("OTP expired");
+        }
+
     }
 
     private void validateRegistration(RegistrationRequest req) {
