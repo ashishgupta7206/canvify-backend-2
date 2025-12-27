@@ -23,4 +23,6 @@ public interface ProductService {
     ApiResponse<?> deleteProduct(Long id);
 
     List<ProductAndProductVariantResponse> getProductAndProductVariant(List<ProductVariantRow> request);
+
+    ApiResponse<?> getProductsByCategoryId(Long categoryId, BaseIndexRequest request);
 }

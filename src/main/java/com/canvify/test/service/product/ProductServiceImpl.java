@@ -625,6 +625,24 @@ public class ProductServiceImpl implements ProductService {
         return responses;
     }
 
+    @Override
+    public ApiResponse<?> getProductsByCategoryId(Long categoryId, BaseIndexRequest request) {
+
+        Page<Product> page = productRepo.findProductsByCategory(categoryId, request.buildPageable());
+
+        List<ProductResponse> responses =
+                page.getContent()
+                        .stream()
+                        .map(this::buildProductResponse)
+                        .toList();
+
+        return ApiResponse.success(
+                responses,
+                "Products fetched by category",
+                new Pagination(page)
+        );
+    }
+
 
     private ProductResponse buildProductResponse(Product product) {
 

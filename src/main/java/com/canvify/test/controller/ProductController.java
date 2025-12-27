@@ -44,6 +44,14 @@ public class ProductController {
         return ResponseEntity.ok(productService.getAllProducts(request));
     }
 
+    @PostMapping("/product-by-category/{categoryId}")
+    public ResponseEntity<ApiResponse<?>> getProductsByCategoryId(
+            @PathVariable Long categoryId,
+            @RequestBody BaseIndexRequest request) {
+
+        return ResponseEntity.ok(productService.getProductsByCategoryId(categoryId, request));
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<ApiResponse<?>> deleteProduct(@PathVariable Long id) {
         return ResponseEntity.ok(productService.deleteProduct(id));
