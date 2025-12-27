@@ -10,9 +10,8 @@ import com.canvify.test.model.BaseIndexRequest;
 import com.canvify.test.model.Pagination;
 import com.canvify.test.repository.*;
 import com.canvify.test.request.product.*;
-import com.canvify.test.response.product.ProductImageResponse;
-import com.canvify.test.response.product.ProductResponse;
-import com.canvify.test.response.product.ProductVariantResponse;
+import com.canvify.test.request.product.ProductAndProductVariantResponse;
+import com.canvify.test.response.product.*;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -493,7 +492,7 @@ public class ProductServiceImpl implements ProductService {
         Product product = productRepo.findByIdAndBitDeletedFlagFalse(id)
                 .orElseThrow(() -> new RuntimeException("Product not found"));
 
-        ProductResponse response = buildProductResponse(product);
+        ProductByIdResponse response = buildProductResponseForById(product);
 
         return ApiResponse.success(response);
     }
@@ -802,6 +801,7 @@ public class ProductServiceImpl implements ProductService {
 
                             ProductVariantResponse vr = new ProductVariantResponse();
                             vr.setId(variant.getId());
+                            vr.setName(variant.getName());
                             vr.setSku(variant.getSku());
                             vr.setPrice(variant.getPrice());
                             vr.setMrp(variant.getMrp());
@@ -815,6 +815,114 @@ public class ProductServiceImpl implements ProductService {
                             vr.setCategorySortOrder(variant.getCategorySortOrder());
                             if (variant.getNutritionInfo() != null) {
                                 vr.setNutritionInfoId(variant.getNutritionInfo().getId());
+                            }
+                            vr.setRating(variant.getRating());
+                            vr.setStorageInstructions(variant.getStorageInstructions());
+                            vr.setProductVariantMktStatus(variant.getProductVariantMktStatus());
+                            vr.setProductVariantMktStatusSortOrder(variant.getProductVariantMktStatusSortOrder());
+                            vr.setSortOrder(variant.getSortOrder());
+                            vr.setProductType(variant.getProductType());
+                            if (variant.getListOfVariantInCombo() != null) {
+                                vr.setListOfVariantInCombo(variant.getListOfVariantInCombo().stream().map(ProductVariant::getId).collect(Collectors.toList()));
+                            }
+
+                            List<ProductImageResponse> variantImages =
+                                    imageRepo.findByProductVariantId(variant.getId())
+                                            .stream()
+                                            .map(img -> {
+                                                ProductImageResponse ir = new ProductImageResponse();
+                                                ir.setId(img.getId());
+                                                ir.setImageUrl(img.getImageUrl());
+                                                ir.setSortOrder(img.getSortOrder());
+                                                return ir;
+                                            })
+                                            .toList();
+
+                            vr.setImages(variantImages);
+
+                            return vr;
+                        })
+                        .toList();
+
+        response.setVariants(variantResponses);
+
+        return response;
+    }
+
+    private ProductByIdResponse buildProductResponseForById(Product product) {
+
+        ProductByIdResponse response = new ProductByIdResponse();
+
+        response.setId(product.getId());
+        response.setName(product.getName());
+        response.setSlug(product.getSlug());
+        response.setShortDescription(product.getShortDescription());
+        response.setLongDescription(product.getLongDescription());
+        response.setMainImage(product.getMainImage());
+        response.setStatus(product.getStatus().name());
+
+        response.setCategoryId(product.getCategory().getId());
+        response.setCategoryName(product.getCategory().getName());
+
+        // --------------------------
+        // Product-level Images
+        // --------------------------
+        List<ProductImageResponse> productImages =
+                imageRepo.findByProductIdAndProductVariantIdIsNull(product.getId())
+                        .stream()
+                        .map(img -> {
+                            ProductImageResponse r = new ProductImageResponse();
+                            r.setId(img.getId());
+                            r.setImageUrl(img.getImageUrl());
+                            r.setSortOrder(img.getSortOrder());
+                            return r;
+                        })
+                        .toList();
+
+        response.setImages(productImages);
+
+        // --------------------------
+        // Variants + Variant Images
+        // --------------------------
+        List<ProductVariantByIdResponse> variantResponses =
+                variantRepo.findByProductIdAndBitDeletedFlagFalse(product.getId())
+                        .stream()
+                        .map(variant -> {
+
+                            ProductVariantByIdResponse vr = new ProductVariantByIdResponse();
+                            vr.setId(variant.getId());
+                            vr.setName(variant.getName());
+                            vr.setSku(variant.getSku());
+                            vr.setPrice(variant.getPrice());
+                            vr.setMrp(variant.getMrp());
+                            vr.setDiscountPercent(variant.getDiscountPercent());
+                            vr.setStockQty(variant.getStockQty());
+                            vr.setSize(variant.getSize());
+                            vr.setWeight(variant.getWeight());
+                            vr.setColor(variant.getColor());
+                            vr.setBarcode(variant.getBarcode());
+                            vr.setIsActive(variant.getIsActive());
+                            vr.setCategorySortOrder(variant.getCategorySortOrder());
+                            if (variant.getNutritionInfo() != null) {
+
+                                NutritionInfo ni = variant.getNutritionInfo();
+
+                                NutritionInfoResponse nir = new NutritionInfoResponse();
+                                nir.setId(ni.getId());
+                                nir.setEnergyKcal(ni.getEnergyKcal());
+                                nir.setProteinG(ni.getProteinG());
+                                nir.setCarbohydrateG(ni.getCarbohydrateG());
+                                nir.setTotalSugarG(ni.getTotalSugarsG());
+                                nir.setAddedSugarG(ni.getAddedSugarsG());
+                                nir.setTotalFatG(ni.getTotalFatG());
+                                nir.setSaturatedFatG(ni.getSaturatedFatG());
+                                nir.setTransFatG(ni.getTransFatG());
+                                nir.setCholesterolMg(ni.getCholesterolMg());
+                                nir.setSodiumMg(ni.getSodiumMg());
+                                nir.setIngredients(ni.getIngredients());
+                                nir.setServingSize(ni.getServingSize());
+
+                                vr.setNutritionInfo(nir);
                             }
                             vr.setRating(variant.getRating());
                             vr.setStorageInstructions(variant.getStorageInstructions());
