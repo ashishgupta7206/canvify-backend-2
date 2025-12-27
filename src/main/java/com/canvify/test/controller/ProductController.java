@@ -4,6 +4,7 @@ import com.canvify.test.model.BaseIndexRequest;
 import com.canvify.test.request.product.CreateProductRequest;
 import com.canvify.test.request.product.UpdateProductRequest;
 import com.canvify.test.model.ApiResponse;
+import com.canvify.test.response.product.GetAllProductsRequest;
 import com.canvify.test.service.product.ProductService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -39,7 +40,7 @@ public class ProductController {
 
     @PostMapping("/search")
     public ResponseEntity<ApiResponse<?>> getAllProducts(
-            @RequestBody BaseIndexRequest request) {
+            @RequestBody GetAllProductsRequest request) {
 
         return ResponseEntity.ok(productService.getAllProducts(request));
     }

@@ -7,6 +7,7 @@ import com.canvify.test.request.product.ProductAndProductVariantResponse;
 import com.canvify.test.request.product.ProductVariantRow;
 import com.canvify.test.request.product.UpdateProductRequest;
 import com.canvify.test.model.ApiResponse;
+import com.canvify.test.response.product.GetAllProductsRequest;
 
 import java.util.List;
 
@@ -18,7 +19,7 @@ public interface ProductService {
 
     ApiResponse<?> getProductById(Long id);
 
-    ApiResponse<?> getAllProducts(BaseIndexRequest request);
+    ApiResponse<?> getAllProducts(GetAllProductsRequest request);
 
     ApiResponse<?> deleteProduct(Long id);
 

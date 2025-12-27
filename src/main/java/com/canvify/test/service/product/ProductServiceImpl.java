@@ -523,14 +523,19 @@ public class ProductServiceImpl implements ProductService {
 
 
     @Override
-    public ApiResponse<?> getAllProducts(BaseIndexRequest request) {
+    public ApiResponse<?> getAllProducts(GetAllProductsRequest request) {
 
-        Page<Product> page = productRepo.findAll(request.buildPageable());
+        Page<Product> page = productRepo.findAll(
+                ProductSpecification.filter(request),
+                request.buildPageable()
+        );
 
-        List<ProductResponse> responses =
+        List<getAllProductResponse> responses =
                 page.getContent()
                         .stream()
-                        .map(this::buildProductResponse)
+                        .flatMap(product ->
+                                buildProductGetAllResponses(product).stream()
+                        )
                         .toList();
 
         return ApiResponse.success(
@@ -956,5 +961,107 @@ public class ProductServiceImpl implements ProductService {
 
         return response;
     }
+
+    private List<getAllProductResponse> buildProductGetAllResponses(Product product) {
+
+        List<getAllProductResponse> responses = new ArrayList<>();
+
+        // --------------------------
+        // Product-level Images
+        // --------------------------
+        List<ProductImageResponse> productImages =
+                imageRepo.findByProductIdAndProductVariantIdIsNull(product.getId())
+                        .stream()
+                        .map(img -> {
+                            ProductImageResponse r = new ProductImageResponse();
+                            r.setId(img.getId());
+                            r.setImageUrl(img.getImageUrl());
+                            r.setSortOrder(img.getSortOrder());
+                            return r;
+                        })
+                        .toList();
+
+        // --------------------------
+        // Variants
+        // --------------------------
+        List<ProductVariant> variants =
+                variantRepo.findByProductIdAndBitDeletedFlagFalse(product.getId());
+
+        for (ProductVariant variant : variants) {
+
+            getAllProductResponse response = new getAllProductResponse();
+
+            // --------------------------
+            // Product fields
+            // --------------------------
+            response.setProductId(product.getId());
+            response.setProductName(product.getName());
+            response.setProductSlug(product.getSlug());
+            response.setShortDescription(product.getShortDescription());
+            response.setLongDescription(product.getLongDescription());
+            response.setMainImage(product.getMainImage());
+            response.setStatus(product.getStatus().name());
+
+            response.setCategoryId(product.getCategory().getId());
+            response.setCategoryName(product.getCategory().getName());
+
+            // --------------------------
+            // Variant fields
+            // --------------------------
+            response.setProductVariantId(variant.getId());
+            response.setProductVariantName(variant.getName());
+            response.setProductVariantSku(variant.getSku());
+            response.setPrice(variant.getPrice());
+            response.setMrp(variant.getMrp());
+            response.setDiscountPercent(variant.getDiscountPercent());
+            response.setStockQty(variant.getStockQty());
+            response.setSize(variant.getSize());
+            response.setWeight(variant.getWeight());
+            response.setColor(variant.getColor());
+            response.setBarcode(variant.getBarcode());
+            response.setProductVariantIsActive(variant.getIsActive());
+            response.setCategorySortOrder(variant.getCategorySortOrder());
+            response.setProductVariantRating(variant.getRating());
+            response.setProductVariantMktStatus(variant.getProductVariantMktStatus());
+            response.setProductVariantMktStatusSortOrder(
+                    variant.getProductVariantMktStatusSortOrder()
+            );
+            response.setSortOrder(variant.getSortOrder());
+            response.setProductType(variant.getProductType());
+
+            if (variant.getListOfVariantInCombo() != null) {
+                response.setListOfVariantInCombo(
+                        variant.getListOfVariantInCombo()
+                                .stream()
+                                .map(ProductVariant::getId)
+                                .toList()
+                );
+            }
+
+            // --------------------------
+            // Images (variant preferred)
+            // --------------------------
+            List<ProductImageResponse> variantImages =
+                    imageRepo.findByProductVariantId(variant.getId())
+                            .stream()
+                            .map(img -> {
+                                ProductImageResponse ir = new ProductImageResponse();
+                                ir.setId(img.getId());
+                                ir.setImageUrl(img.getImageUrl());
+                                ir.setSortOrder(img.getSortOrder());
+                                return ir;
+                            })
+                            .toList();
+
+            response.setImages(
+                    !variantImages.isEmpty() ? variantImages : productImages
+            );
+
+            responses.add(response);
+        }
+
+        return responses;
+    }
+
 
 }

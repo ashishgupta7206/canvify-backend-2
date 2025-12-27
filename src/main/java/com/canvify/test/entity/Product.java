@@ -3,11 +3,10 @@ package com.canvify.test.entity;
 import com.canvify.test.entity.audit.Auditable;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
-import lombok.NoArgsConstructor;
+import lombok.*;
 import com.canvify.test.enums.ProductStatus;
+
+import java.util.List;
 
 @Entity
 @Table(name = "m_product", indexes = {
@@ -46,4 +45,9 @@ public class Product extends Auditable {
     @Enumerated(EnumType.STRING)
     @Column(name = "status", length = 20, nullable = false)
     private ProductStatus status = ProductStatus.DRAFT;
+
+    @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private List<ProductVariant> variants;
 }
