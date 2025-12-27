@@ -1,6 +1,7 @@
 package com.canvify.test.response.category;
 
 import com.canvify.test.entity.Category;
+import com.canvify.test.enums.CategoryStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -19,5 +20,6 @@ public class GetCategoryResponse {
     private String description;
     private String imageUrl;
     private Long parentId;
+    private CategoryStatus status;
     private List<Category> subCategory;
 }

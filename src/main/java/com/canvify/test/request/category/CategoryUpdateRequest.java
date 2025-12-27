@@ -1,5 +1,6 @@
 package com.canvify.test.request.category;
 
+import com.canvify.test.enums.CategoryStatus;
 import lombok.Data;
 
 @Data
@@ -9,4 +10,5 @@ public class CategoryUpdateRequest {
     private String description;
     private String imageUrl;
     private Long parentId;
+    private CategoryStatus status;
 }

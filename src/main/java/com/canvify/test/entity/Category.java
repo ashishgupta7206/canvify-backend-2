@@ -1,6 +1,7 @@
 package com.canvify.test.entity;
 
 import com.canvify.test.entity.audit.Auditable;
+import com.canvify.test.enums.CategoryStatus;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -38,5 +39,9 @@ public class Category extends Auditable {
 
     @Column(name = "image_url", length = 500)
     private String imageUrl;
+
+    @Column(name = "status")
+    @Enumerated(EnumType.STRING)
+    private CategoryStatus status;
 }
 

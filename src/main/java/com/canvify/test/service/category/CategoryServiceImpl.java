@@ -2,6 +2,7 @@ package com.canvify.test.service.category;
 
 import com.canvify.test.dto.category.CategoryDTO;
 import com.canvify.test.entity.Category;
+import com.canvify.test.enums.CategoryStatus;
 import com.canvify.test.repository.CategoryRepository;
 import com.canvify.test.request.category.CategoryCreateRequest;
 import com.canvify.test.request.category.CategoryUpdateRequest;
@@ -30,6 +31,7 @@ public class CategoryServiceImpl implements CategoryService {
         c.setSlug(req.getName().toLowerCase().replace(" ", "-"));
         c.setDescription(req.getDescription());
         c.setImageUrl(req.getImageUrl());
+        c.setStatus(req.getStatus() != null ? req.getStatus() : CategoryStatus.ACTIVE);
 
         if (req.getParentId() != null)
             c.setParent(repo.findByIdAndBitDeletedFlagFalse(req.getParentId())
@@ -49,6 +51,7 @@ public class CategoryServiceImpl implements CategoryService {
         if (req.getName() != null) c.setName(req.getName());
         if (req.getDescription() != null) c.setDescription(req.getDescription());
         if (req.getImageUrl() != null) c.setImageUrl(req.getImageUrl());
+        if (req.getStatus() != null) c.setStatus(req.getStatus());
         if (req.getParentId() != null)
             c.setParent(repo.findByIdAndBitDeletedFlagFalse(req.getParentId())
                     .orElseThrow(() -> new RuntimeException("Parent not found")));
@@ -72,6 +75,7 @@ public class CategoryServiceImpl implements CategoryService {
                 .slug(c.getSlug())
                 .description(c.getDescription())
                 .imageUrl(c.getImageUrl())
+                .status(c.getStatus())
                 .parentId(c.getParent() != null ? c.getParent().getId() : null)
                 .subCategory(subCategory)
                 .build();
@@ -124,6 +128,7 @@ public class CategoryServiceImpl implements CategoryService {
         dto.setSlug(c.getSlug());
         dto.setDescription(c.getDescription());
         dto.setImageUrl(c.getImageUrl());
+        dto.setStatus(c.getStatus());
         dto.setParentId(c.getParent() != null ? c.getParent().getId() : null);
         return dto;
     }
