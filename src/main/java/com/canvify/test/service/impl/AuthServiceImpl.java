@@ -1,5 +1,7 @@
 package com.canvify.test.service.impl;
 
+import com.canvify.test.exception.BadRequestException;
+import com.canvify.test.exception.NotFoundException;
 import com.canvify.test.model.ApiResponse;
 import com.canvify.test.entity.Role;
 import com.canvify.test.entity.User;
@@ -49,6 +51,7 @@ public class AuthServiceImpl implements AuthService {
     // ------------------------
     @Override
     public ApiResponse<?> login(LoginRequest request) {
+
 
         Authentication auth = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(
@@ -200,9 +203,11 @@ public class AuthServiceImpl implements AuthService {
     // ------------------------------------------------------------
 
     private User findUser(String identifier) {
-        return userRepository.findByUsernameOrEmailOrMobileNumber(identifier, identifier, identifier)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+        return userRepository
+                .findByUsernameOrEmailOrMobileNumber(identifier, identifier, identifier)
+                .orElseThrow(() -> new NotFoundException("User not found"));
     }
+
 
     private void validateOtp(User user, String otp) {
 
@@ -215,15 +220,19 @@ public class AuthServiceImpl implements AuthService {
 
     private void validateRegistration(RegistrationRequest req) {
 
-        if (isBlank(req.getEmail()) && isBlank(req.getMobileNumber()))
-            throw new RuntimeException("Email or Mobile is required");
+        if (isBlank(req.getEmail()) && isBlank(req.getMobileNumber())) {
+            throw new BadRequestException("Email or Mobile is required");
+        }
 
-        if (!isBlank(req.getEmail()) && userRepository.existsByEmail(req.getEmail()))
-            throw new RuntimeException("Email already exists");
+        if (!isBlank(req.getEmail()) && userRepository.existsByEmail(req.getEmail())) {
+            throw new BadRequestException("Email already exists");
+        }
 
-        if (!isBlank(req.getMobileNumber()) && userRepository.existsByMobileNumber(req.getMobileNumber()))
-            throw new RuntimeException("Mobile already exists");
+        if (!isBlank(req.getMobileNumber()) && userRepository.existsByMobileNumber(req.getMobileNumber())) {
+            throw new BadRequestException("Mobile already exists");
+        }
     }
+
 
     private String generateNextUsername() {
         String last = userRepository.findTopByOrderByIdDesc()
