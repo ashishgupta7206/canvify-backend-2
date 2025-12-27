@@ -65,6 +65,23 @@ public class AuthServiceImpl implements AuthService {
         return ApiResponse.success(jwt, "Login successful");
     }
 
+    public JwtResponse loginForregister(LoginRequest request) {
+
+        Authentication auth = authenticationManager.authenticate(
+                new UsernamePasswordAuthenticationToken(
+                        request.getIdentifier(),
+                        request.getPassword()
+                )
+        );
+
+        SecurityContextHolder.getContext().setAuthentication(auth);
+
+        User user = ((CustomUserDetails) auth.getPrincipal()).getUser();
+        JwtResponse jwt = buildJwtResponse(user, tokenProvider.generateToken(auth));
+
+        return jwt;
+    }
+
     // ------------------------
     // SEND OTP
     // ------------------------
@@ -106,9 +123,43 @@ public class AuthServiceImpl implements AuthService {
         return buildJwtResponse(user, tokenProvider.generateToken(auth));
     }
 
-    // ------------------------
-    // REGISTRATION
-    // ------------------------
+//    // ------------------------
+//    // REGISTRATION
+//    // ------------------------
+//    @Override
+//    @Transactional
+//    public ApiResponse<?> register(RegistrationRequest req) {
+//
+//        validateRegistration(req);
+//
+//        String username = generateNextUsername();
+//
+//        Role role = roleRepository.findByName("ROLE_USER")
+//                .orElseThrow(() -> new RuntimeException("Role missing"));
+//
+//        User user = new User();
+//        user.setName(req.getName());
+//        user.setUsername(username);
+//        user.setEmail(blankToNull(req.getEmail()));
+//        user.setMobileNumber(blankToNull(req.getMobileNumber()));
+//        user.setPassword(passwordEncoder.encode(req.getPassword()));
+//        user.setRole(role);
+//
+//        User saved = userRepository.save(user);
+//
+//        return ApiResponse.success(
+//                AuthRegisterResponse.builder()
+//                        .id(saved.getId())
+//                        .username(saved.getUsername())
+//                        .name(saved.getName())
+//                        .email(saved.getEmail())
+//                        .mobileNumber(saved.getMobileNumber())
+//                        .role(saved.getRole())
+//                        .build(),
+//                "User registered successfully"
+//        );
+//    }
+
     @Override
     @Transactional
     public ApiResponse<?> register(RegistrationRequest req) {
@@ -130,18 +181,19 @@ public class AuthServiceImpl implements AuthService {
 
         User saved = userRepository.save(user);
 
-        return ApiResponse.success(
-                AuthRegisterResponse.builder()
-                        .id(saved.getId())
-                        .username(saved.getUsername())
-                        .name(saved.getName())
-                        .email(saved.getEmail())
-                        .mobileNumber(saved.getMobileNumber())
-                        .role(saved.getRole())
-                        .build(),
-                "User registered successfully"
-        );
+        LoginRequest lr = new LoginRequest();
+        lr.setPassword(req.getPassword());
+        if (req.getEmail() != null && !req.getEmail().isBlank()) {
+            lr.setIdentifier(req.getEmail());
+        } else {
+            lr.setIdentifier(req.getMobileNumber());
+        }
+
+        JwtResponse jwt = loginForregister(lr);
+
+        return ApiResponse.success(jwt, "User registered & logged in successfully");
     }
+
 
     // ------------------------------------------------------------
     // PRIVATE METHODS BELOW — CLEAN ARCHITECTURE
