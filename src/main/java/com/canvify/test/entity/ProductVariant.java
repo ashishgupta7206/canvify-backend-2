@@ -1,6 +1,8 @@
 package com.canvify.test.entity;
 
 import com.canvify.test.entity.audit.Auditable;
+import com.canvify.test.enums.ProductType;
+import com.canvify.test.enums.productVariantMktStatus;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -9,6 +11,7 @@ import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 @Entity
 @Table(name = "m_product_variant", indexes = {
@@ -62,5 +65,41 @@ public class ProductVariant extends Auditable {
 
     @Column(name = "is_active")
     private Boolean isActive = true;
-}
 
+    @Column(name = "category_sort_order")
+    private Long categorySortOrder;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "nutrition_info_id")
+    @JsonIgnore
+    private NutritionInfo nutritionInfo;
+
+    @Column(name = "rating")
+    private String rating;
+
+    @Column(name = "storage_instructions")
+    private String storageInstructions;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "product_type")
+    private ProductType productType;
+
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+            name = "m_product_variant_combo",
+            joinColumns = @JoinColumn(name = "combo_variant_id"),
+            inverseJoinColumns = @JoinColumn(name = "child_variant_id")
+    )
+    private List<ProductVariant> listOfVariantInCombo;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "product_variant_mkt_status")
+    private productVariantMktStatus productVariantMktStatus;
+
+    @Column(name = "product_variant_mkt_status_sort_order")
+    private Long productVariantMktStatusSortOrder;
+
+    @Column(name= "sort_order")
+    private Long sortOrder;
+
+}
