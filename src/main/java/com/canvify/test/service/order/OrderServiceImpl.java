@@ -393,6 +393,7 @@ public class OrderServiceImpl implements OrderService {
             Map<String, Object> item = new HashMap<>();
             item.put("variantId", variant.getId());
             item.put("productName", variant.getProduct().getName());
+            item.put("productId" , variant.getProduct().getId());
             item.put("productVariantName", variant.getName());
             item.put("variantLabel", variant.getSize());
             item.put("priceAtTime", priceAtTime);
