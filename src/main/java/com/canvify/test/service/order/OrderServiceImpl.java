@@ -446,84 +446,84 @@ public class OrderServiceImpl implements OrderService {
 
 
 
-//    @Override
-//    public ApiResponse<?> getOrder(Long orderId) {
-//        CustomUserDetails user = userContext.getCurrentUser();
-//        Orders order = orderRepository.findById(orderId)
-//                .orElseThrow(() -> new RuntimeException("Order not found"));
-//
-//        if (!order.getUser().getId().equals(user.getId())) {
-//            return ApiResponse.error("Unauthorized");
-//        }
-//
-//        return ApiResponse.success(convertToDTO(order));
-//    }
-//
-//    @Override
-//    public ApiResponse<?> getMyOrders() {
-//        CustomUserDetails user = userContext.getCurrentUser();
-//        List<Orders> orders = orderRepository.findByUserIdAndBitDeletedFlagFalse(user.getId());
-//        List<OrderDTO> list = orders.stream().map(this::convertToDTO).collect(Collectors.toList());
-//        return ApiResponse.success(list);
-//    }
-//
-//    @Override
-//    @Transactional
-//    public ApiResponse<?> cancelOrder(Long orderId) {
-//
-//        CustomUserDetails currentUser = userContext.getCurrentUser();
-//        if (currentUser == null) {
-//            return ApiResponse.error("Unauthorized");
-//        }
-//
-//        Orders order = orderRepository.findById(orderId)
-//                .orElseThrow(() -> new RuntimeException("Order not found"));
-//
-//        if (!order.getUser().getId().equals(currentUser.getId())) {
-//            return ApiResponse.error("Unauthorized");
-//        }
-//
-//        if (order.getStatus() == OrderStatus.SHIPPED ||
-//                order.getStatus() == OrderStatus.DELIVERED) {
-//            return ApiResponse.error("Order cannot be cancelled");
-//        }
-//
-//        // -----------------------
-//        // RELEASE STOCK
-//        // -----------------------
-//        List<OrderItem> items =
-//                orderItemRepository.findByOrderIdAndBitDeletedFlagFalse(orderId);
-//
-//        for (OrderItem item : items) {
-//            inventoryService.releaseReservedStock(
-//                    item.getProductVariant().getId(),
-//                    item.getQuantity(),
-//                    order.getId()
-//            );
-//        }
-//
-//        // -----------------------
-//        // ROLLBACK COUPON USAGE
-//        // -----------------------
-//        Optional<CouponUsage> usageOpt =
-//                couponUsageRepository.findByOrderIdAndBitDeletedFlagFalse(orderId);
-//
-//        usageOpt.ifPresent(usage -> {
-//            usage.setBitDeletedFlag(true);
-//            couponUsageRepository.save(usage);
-//        });
-//
-//        order = orderRepository.save(order);
-//
-//        orderStatusManager.changeStatus(
-//                order,
-//                OrderStatus.PLACED,
-//                "Order created"
-//        );
-//
-//
-//        return ApiResponse.success(null, "Order cancelled successfully");
-//    }
+    @Override
+    public ApiResponse<?> getOrder(Long orderId) {
+        CustomUserDetails user = userContext.getCurrentUser();
+        Orders order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new RuntimeException("Order not found"));
+
+        if (!order.getUser().getId().equals(user.getId())) {
+            return ApiResponse.error("Unauthorized");
+        }
+
+        return ApiResponse.success(convertToDTO(order));
+    }
+
+    @Override
+    public ApiResponse<?> getMyOrders() {
+        CustomUserDetails user = userContext.getCurrentUser();
+        List<Orders> orders = orderRepository.findByUserIdAndBitDeletedFlagFalse(user.getId());
+        List<OrderDTO> list = orders.stream().map(this::convertToDTO).collect(Collectors.toList());
+        return ApiResponse.success(list);
+    }
+
+    @Override
+    @Transactional
+    public ApiResponse<?> cancelOrder(Long orderId) {
+
+        CustomUserDetails currentUser = userContext.getCurrentUser();
+        if (currentUser == null) {
+            return ApiResponse.error("Unauthorized");
+        }
+
+        Orders order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new RuntimeException("Order not found"));
+
+        if (!order.getUser().getId().equals(currentUser.getId())) {
+            return ApiResponse.error("Unauthorized");
+        }
+
+        if (order.getStatus() == OrderStatus.SHIPPED ||
+                order.getStatus() == OrderStatus.DELIVERED) {
+            return ApiResponse.error("Order cannot be cancelled");
+        }
+
+        // -----------------------
+        // RELEASE STOCK
+        // -----------------------
+        List<OrderItem> items =
+                orderItemRepository.findByOrderIdAndBitDeletedFlagFalse(orderId);
+
+        for (OrderItem item : items) {
+            inventoryService.releaseReservedStock(
+                    item.getProductVariant().getId(),
+                    item.getQuantity(),
+                    order.getId()
+            );
+        }
+
+        // -----------------------
+        // ROLLBACK COUPON USAGE
+        // -----------------------
+        Optional<CouponUsage> usageOpt =
+                couponUsageRepository.findByOrderIdAndBitDeletedFlagFalse(orderId);
+
+        usageOpt.ifPresent(usage -> {
+            usage.setBitDeletedFlag(true);
+            couponUsageRepository.save(usage);
+        });
+
+        order = orderRepository.save(order);
+
+        orderStatusManager.changeStatus(
+                order,
+                OrderStatus.PLACED,
+                "Order created"
+        );
+
+
+        return ApiResponse.success(null, "Order cancelled successfully");
+    }
 
 
     private OrderDTO convertToDTO(Orders order) {
