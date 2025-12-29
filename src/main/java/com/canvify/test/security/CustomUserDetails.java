@@ -32,6 +32,15 @@ public class CustomUserDetails implements UserDetails {
         this.authorities = authorities;
         this.user = user;
     }
+    public CustomUserDetails(User user) {
+        this(
+                user.getId(),
+                user.getUsername(),
+                user.getPassword(),
+                user.getAuthorities(), // or build authorities from role
+                user
+        );
+    }
 
     public static CustomUserDetails create(User user) {
         Role role = user.getRole();

@@ -39,4 +39,12 @@ public class OrderController {
     ) {
         return ResponseEntity.ok(orderService.cancelOrder(id));
     }
+
+    @PostMapping("/preview")
+    public ResponseEntity<ApiResponse<?>> previewOrder(
+            @RequestBody CreateOrderRequest req
+    ) {
+        return ResponseEntity.ok(orderService.previewOrder(req));
+    }
+
 }

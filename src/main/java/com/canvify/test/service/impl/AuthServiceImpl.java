@@ -237,7 +237,7 @@ public class AuthServiceImpl implements AuthService {
     }
 
 
-    private String generateNextUsername() {
+    public String generateNextUsername() {
         String last = userRepository.findTopByOrderByIdDesc()
                 .map(User::getUsername)
                 .orElse("AURA000");

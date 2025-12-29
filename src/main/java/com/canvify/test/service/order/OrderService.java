@@ -14,4 +14,6 @@ public interface OrderService {
     ApiResponse<?> getMyOrders();
 
     ApiResponse<?> cancelOrder(Long orderId);
+
+    ApiResponse<?> previewOrder(CreateOrderRequest req);
 }

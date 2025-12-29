@@ -6,15 +6,21 @@ import com.canvify.test.entity.*;
 import com.canvify.test.enums.DiscountType;
 import com.canvify.test.enums.OrderStatus;
 import com.canvify.test.enums.PaymentStatus;
+import com.canvify.test.exception.BadRequestException;
+import com.canvify.test.exception.NotFoundException;
 import com.canvify.test.repository.*;
+import com.canvify.test.request.auth.LoginRequest;
 import com.canvify.test.request.order.CreateOrderRequest;
 import com.canvify.test.request.order.OrderItemRequest;
 import com.canvify.test.model.ApiResponse;
 import com.canvify.test.security.CustomUserDetails;
+import com.canvify.test.security.PasswordGenerator;
 import com.canvify.test.security.UserContext;
+import com.canvify.test.service.impl.AuthServiceImpl;
 import com.canvify.test.service.inventory.InventoryService;
 import com.canvify.test.service.orderstatus.OrderStatusManager;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,6 +30,7 @@ import java.time.LocalDateTime;
 import java.util.stream.Collectors;
 import java.util.*;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class OrderServiceImpl implements OrderService {
@@ -38,37 +45,150 @@ public class OrderServiceImpl implements OrderService {
     private final CouponUsageRepository couponUsageRepository;
     private final UserContext userContext;
     private final OrderStatusManager orderStatusManager;
+    private final RoleRepository roleRepository;
+    private final AuthServiceImpl authServiceImpl;
 
     @Override
     @Transactional
     public ApiResponse<?> placeOrder(CreateOrderRequest req) {
 
-        CustomUserDetails currentUser = userContext.getCurrentUser();
-        if (currentUser == null) {
-            return ApiResponse.error("User not authenticated");
+        // ------------------------------------------------
+        // BASIC VALIDATIONS
+        // ------------------------------------------------
+        if (req.getItems() == null || req.getItems().isEmpty()) {
+            throw new NotFoundException("Order must contain at least one item");
         }
 
-        User user = userRepository.findById(currentUser.getId())
-                .orElseThrow(() -> new RuntimeException("Invalid user"));
+        // ------------------------------------------------
+        // RESOLVE USER (LOGGED-IN OR GUEST)
+        // ------------------------------------------------
+        User user;
+        CustomUserDetails currentUser = userContext.getCurrentUser();
+        String token = "";
 
-        Address address = addressRepository.findById(req.getAddressId())
-                .orElseThrow(() -> new RuntimeException("Invalid address"));
+        if (currentUser != null) {
 
-        Orders order = new Orders();
-        order.setUser(user);
-        order.setAddress(address);
-        order.setOrderDate(LocalDateTime.now());
-        order.setPaymentStatus(PaymentStatus.PENDING);
-        order.setStatus(OrderStatus.PLACED);
-        orderRepository.save(order);
+            user = userRepository.findById(currentUser.getId())
+                    .orElseThrow(() -> new RuntimeException("Invalid user"));
+
+        } else {
+            // ---------- GUEST FLOW ----------
+            if (req.getAddress() == null || (req.getAddress().getMobile() == null || req.getAddress().getMobile().isBlank())) {
+                throw new NotFoundException("Mobile number is required for guest checkout");
+            }
+
+            Role role = roleRepository.findByName("ROLE_USER")
+                    .orElseThrow(() -> new NotFoundException("ROLE_USER not configured"));
+
+            String password = PasswordGenerator.generate(12);
+            String userName = "GUEST" + authServiceImpl.generateNextUsername();
+            user = userRepository.findByMobileNumber(req.getAddress().getMobile())
+                    .orElseGet(() -> {
+                        User guest = new User();
+                        guest.setMobileNumber(req.getAddress().getMobile());
+                        guest.setName(req.getAddress().getFullName());
+                        guest.setEmail(req.getEmailId());
+                        guest.setRole(role);
+                        guest.setUsername(userName);
+                        guest.setPassword(password);
+                        return userRepository.save(guest);
+                    });
+
+            LoginRequest loginRequest = new LoginRequest();
+            loginRequest.setIdentifier(req.getAddress().getMobile());
+            loginRequest.setPassword(password);
+            token = authServiceImpl.loginForregister(loginRequest).getAccessToken();
+
+        }
+        currentUser = userContext.getCurrentUser();
 
 
+        // ------------------------------------------------
+        // RESOLVE ADDRESS (ID OR CREATE)
+        // ------------------------------------------------
+        Address address;
+
+        if (req.getAddressId() != null) {
+
+            // Fetch existing address
+            address = addressRepository.findById(req.getAddressId())
+                    .orElseThrow(() -> new RuntimeException("Invalid address"));
+
+            // Ownership check
+            if (!address.getUser().getId().equals(user.getId())) {
+                throw new RuntimeException("Address does not belong to user");
+            }
+
+            // 🔹 If address object is also present → UPDATE
+            if (req.getAddress() != null) {
+                address.setFullName(req.getAddress().getFullName());
+                address.setMobile(req.getAddress().getMobile());
+                address.setPincode(req.getAddress().getPincode());
+                address.setCity(req.getAddress().getCity());
+                address.setState(req.getAddress().getState());
+                address.setAddressLine1(req.getAddress().getAddressLine1());
+                address.setAddressLine2(req.getAddress().getAddressLine2());
+                address.setLandmark(req.getAddress().getLandmark());
+                address.setAddressType(req.getAddress().getAddressType());
+
+                address = addressRepository.save(address);
+            }
+
+        } else if (req.getAddress() != null) {
+
+            // 🔹 Create new address
+            Address newAddress = new Address();
+            newAddress.setUser(user);
+            newAddress.setFullName(req.getAddress().getFullName());
+            newAddress.setMobile(req.getAddress().getMobile());
+            newAddress.setPincode(req.getAddress().getPincode());
+            newAddress.setCity(req.getAddress().getCity());
+            newAddress.setState(req.getAddress().getState());
+            newAddress.setAddressLine1(req.getAddress().getAddressLine1());
+            newAddress.setAddressLine2(req.getAddress().getAddressLine2());
+            newAddress.setLandmark(req.getAddress().getLandmark());
+            newAddress.setAddressType(req.getAddress().getAddressType());
+
+            address = addressRepository.save(newAddress);
+
+        } else {
+            throw new RuntimeException("Address or AddressId is required");
+        }
+
+
+        // ------------------------------------------------
+        // CREATE ORDER (INITIAL)
+        // ------------------------------------------------
+        Orders order;
+
+        try {
+            order = new Orders();
+            order.setUser(user);
+            order.setAddress(address);
+            order.setOrderDate(LocalDateTime.now());
+            order.setPaymentStatus(PaymentStatus.PENDING);
+            order.setStatus(OrderStatus.PLACED);
+            // order.setIsGuestOrder(user.getRole() == Role.GUEST);
+            // order.setGuestMobile(user.getMobileNumber());
+
+            order = orderRepository.save(order);
+
+        } catch (Exception ex) {
+
+            // 🔴 LOG FULL ERROR (very important)
+            log.error("Failed to create order for userId={}",
+                    user != null ? user.getId() : null, ex);
+
+            // ❌ Convert to business-safe exception
+            throw new RuntimeException("Failed to create order. Please try again.");
+        }
+
+        // ------------------------------------------------
+        // RESERVE STOCK + CALCULATE TOTAL
+        // ------------------------------------------------
         BigDecimal totalAmount = BigDecimal.ZERO;
         List<OrderItem> orderItems = new ArrayList<>();
 
-        // -----------------------
-        // RESERVE STOCK
-        // -----------------------
         for (OrderItemRequest i : req.getItems()) {
 
             ProductVariant variant = productVariantRepository.findById(i.getProductVariantId())
@@ -97,13 +217,17 @@ public class OrderServiceImpl implements OrderService {
 
         orderItemRepository.saveAll(orderItems);
 
-        // -----------------------
-        // COUPON VALIDATION
-        // -----------------------
+        // ------------------------------------------------
+        // COUPON VALIDATION (LOGGED-IN USERS ONLY)
+        // ------------------------------------------------
         BigDecimal discountAmount = BigDecimal.ZERO;
         Coupon appliedCoupon = null;
 
         if (req.getCouponCode() != null && !req.getCouponCode().isBlank()) {
+
+            if (Objects.equals(user.getRole().getName(), "ROLE_GUEST")) {
+                throw new RuntimeException("Please login to apply coupon");
+            }
 
             Coupon coupon = couponRepository
                     .findByCodeAndActiveFlagTrueAndValidFromLessThanEqualAndValidToGreaterThanEqual(
@@ -113,7 +237,6 @@ public class OrderServiceImpl implements OrderService {
                     )
                     .orElseThrow(() -> new RuntimeException("Invalid or expired coupon"));
 
-            // Total usage limit
             if (coupon.getUsageLimit() != null) {
                 long used = couponUsageRepository
                         .countByCouponIdAndBitDeletedFlagFalse(coupon.getId());
@@ -122,7 +245,6 @@ public class OrderServiceImpl implements OrderService {
                 }
             }
 
-            // Per-user usage
             if (coupon.getPerUserLimit() != null) {
                 long userUsed = couponUsageRepository
                         .countByCouponIdAndUserIdAndBitDeletedFlagFalse(
@@ -153,29 +275,132 @@ public class OrderServiceImpl implements OrderService {
             appliedCoupon = coupon;
         }
 
-        BigDecimal payableAmount = totalAmount.subtract(discountAmount);
+        // ------------------------------------------------
+        // DELIVERY CHARGE + FINAL AMOUNT
+        // ------------------------------------------------
+        BigDecimal deliveryCharge = calculateDeliveryCharge(totalAmount);
+
+        BigDecimal payableAmount = totalAmount
+                .subtract(discountAmount)
+                .add(deliveryCharge);
 
         order.setTotalAmount(totalAmount);
         order.setDiscountAmount(discountAmount);
+        order.setDeliveryCharge(deliveryCharge);
         order.setPayableAmount(payableAmount);
 
         order = orderRepository.save(order);
 
-        // -----------------------
+        // ------------------------------------------------
         // SAVE COUPON USAGE
-        // -----------------------
+        // ------------------------------------------------
         if (appliedCoupon != null) {
             CouponUsage usage = new CouponUsage();
             usage.setCoupon(appliedCoupon);
             usage.setUser(user);
             usage.setOrder(order);
             usage.setUsedOn(LocalDateTime.now());
-
             couponUsageRepository.save(usage);
         }
 
-        return ApiResponse.success(convertToDTO(order), "Order placed successfully");
+        return ApiResponse.success(convertToDTO(order,token), "Order placed successfully");
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ApiResponse<?> previewOrder(CreateOrderRequest req) {
+
+        if (req.getItems() == null || req.getItems().isEmpty()) {
+            throw new NotFoundException("Cart is empty");
+        }
+
+        CustomUserDetails currentUser = userContext.getCurrentUser();
+        Long userId = userContext.getUserId();
+
+
+        // ---------------------------------------
+        // ADDRESS (ONLY IF LOGGED IN)
+        // ---------------------------------------
+        Address address = null;
+
+        if (currentUser != null && req.getAddressId() != null) {
+            address = addressRepository.findByIdAndBitDeletedFlagFalse(req.getAddressId())
+                    .orElseThrow(() -> new NotFoundException("Invalid address"));
+
+            if (!address.getUser().getId().equals(currentUser.getId())) {
+                throw new BadRequestException("Address does not belong to user");
+            }
+        }
+        if (currentUser != null && req.getAddressId() == null) {
+
+            List<Address> addressList = addressRepository.findByUserIdAndBitDeletedFlagFalse(userId);
+            if(!addressList.isEmpty()){
+                address = addressList.get(0);
+            }
+        }
+
+        // ---------------------------------------
+        // ITEMS + TOTAL
+        // ---------------------------------------
+        BigDecimal totalAmount = BigDecimal.ZERO;
+        List<Map<String, Object>> itemList = new ArrayList<>();
+
+        for (OrderItemRequest i : req.getItems()) {
+
+            ProductVariant variant = productVariantRepository.findById(i.getProductVariantId())
+                    .orElseThrow(() -> new NotFoundException("Invalid product variant"));
+
+            BigDecimal price = variant.getPrice();
+            BigDecimal itemTotal = price.multiply(BigDecimal.valueOf(i.getQuantity()));
+            totalAmount = totalAmount.add(itemTotal);
+
+            Map<String, Object> item = new HashMap<>();
+            item.put("variantId", variant.getId());
+            item.put("productName", variant.getProduct().getName());
+            item.put("variantLabel", variant.getSize());
+            item.put("quantity", i.getQuantity());
+            item.put("price", price);
+            item.put("total", itemTotal);
+
+            itemList.add(item);
+        }
+
+        // ---------------------------------------
+        // DELIVERY CHARGE
+        // ---------------------------------------
+        BigDecimal deliveryCharge = calculateDeliveryCharge(totalAmount);
+
+        // ---------------------------------------
+        // FINAL PAYABLE
+        // ---------------------------------------
+        BigDecimal payableAmount = totalAmount.add(deliveryCharge);
+
+        // ---------------------------------------
+        // RESPONSE
+        // ---------------------------------------
+        Map<String, Object> response = new HashMap<>();
+
+        if (address != null) {
+            Map<String, Object> addr = new HashMap<>();
+            addr.put("id", address.getId());
+            addr.put("fullName", address.getFullName());
+            addr.put("mobile", address.getMobile());
+            addr.put("addressLine1", address.getAddressLine1());
+            addr.put("city", address.getCity());
+            addr.put("state", address.getState());
+            addr.put("pincode", address.getPincode());
+            response.put("address", addr);
+        }
+
+        response.put("items", itemList);
+        response.put("totalAmount", totalAmount);
+        response.put("deliveryCharge", deliveryCharge);
+        response.put("discountAmount", BigDecimal.ZERO);
+        response.put("payableAmount", payableAmount);
+
+        return ApiResponse.success(response, "Order preview generated");
+    }
+
 
 
     @Override
@@ -289,4 +514,46 @@ public class OrderServiceImpl implements OrderService {
 
         return dto;
     }
+
+    private OrderDTO convertToDTO(Orders order,String accessToken) {
+
+        OrderDTO dto = new OrderDTO();
+        dto.setId(order.getId());
+        dto.setOrderDate(order.getOrderDate());
+        dto.setStatus(order.getStatus());
+        dto.setPaymentStatus(order.getPaymentStatus());
+        dto.setTotalAmount(order.getTotalAmount());
+        dto.setDiscountAmount(order.getDiscountAmount());
+        dto.setPayableAmount(order.getPayableAmount());
+        dto.setAccessToken(accessToken);
+
+        dto.setAddressSummary(order.getAddress().getFullName() + ", " + order.getAddress().getAddressLine1());
+
+        List<OrderItem> items = orderItemRepository.findByOrderIdAndBitDeletedFlagFalse(order.getId());
+
+        dto.setItems(
+                items.stream().map(i -> {
+                    OrderItemDTO d = new OrderItemDTO();
+                    d.setId(i.getId());
+                    d.setVariantId(i.getProductVariant().getId());
+                    d.setProductName(i.getProductVariant().getProduct().getName());
+                    d.setVariantLabel(i.getProductVariant().getSize());
+                    d.setPriceAtTime(i.getPriceAtTime().doubleValue());
+                    d.setTotalPrice(i.getTotalPrice().doubleValue());
+                    d.setQuantity(i.getQuantity());
+                    return d;
+                }).collect(Collectors.toList())
+        );
+
+        return dto;
+    }
+
+    public BigDecimal calculateDeliveryCharge(BigDecimal orderValue) {
+
+        if (orderValue.compareTo(BigDecimal.valueOf(999)) >= 0) {
+            return BigDecimal.ZERO;
+        }
+        return BigDecimal.valueOf(40);
+    }
+
 }

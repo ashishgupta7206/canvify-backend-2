@@ -21,5 +21,6 @@ public class OrderDTO {
     private BigDecimal payableAmount;
 
     private String addressSummary;
+    private String accessToken;
     private List<OrderItemDTO> items;
 }

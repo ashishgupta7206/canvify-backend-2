@@ -48,6 +48,9 @@ public class Orders extends Auditable {
     @Column(name = "payable_amount", precision = 10, scale = 2)
     private BigDecimal payableAmount;
 
+    @Column(name = "delivery_charge", precision = 10, scale = 2)
+    private BigDecimal deliveryCharge;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "payment_status", length = 50)
     private PaymentStatus paymentStatus;

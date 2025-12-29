@@ -1,5 +1,6 @@
 package com.canvify.test.security;
 
+import com.canvify.test.entity.User;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
@@ -8,11 +9,27 @@ import org.springframework.stereotype.Component;
 public class UserContext {
 
     public CustomUserDetails getCurrentUser() {
+
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !(auth.getPrincipal() instanceof CustomUserDetails)) {
+
+        if (auth == null || !auth.isAuthenticated()) {
             return null;
         }
-        return (CustomUserDetails) auth.getPrincipal();
+
+        Object principal = auth.getPrincipal();
+
+        // ✅ Normal case (best)
+        if (principal instanceof CustomUserDetails) {
+            return (CustomUserDetails) principal;
+        }
+
+        // ✅ VERY IMPORTANT fallback
+        if (principal instanceof User) {
+            return new CustomUserDetails((User) principal);
+        }
+
+        // ❌ Anonymous or unsupported
+        return null;
     }
 
     public Long getUserId() {
@@ -35,4 +52,3 @@ public class UserContext {
         return getCurrentUser() != null;
     }
 }
-
