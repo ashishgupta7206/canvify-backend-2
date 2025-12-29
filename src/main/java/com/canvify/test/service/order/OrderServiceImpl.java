@@ -47,6 +47,7 @@ public class OrderServiceImpl implements OrderService {
     private final OrderStatusManager orderStatusManager;
     private final RoleRepository roleRepository;
     private final AuthServiceImpl authServiceImpl;
+    private final ProductImageRepository productImageRepository;
 
     @Override
     @Transactional
@@ -317,9 +318,8 @@ public class OrderServiceImpl implements OrderService {
         CustomUserDetails currentUser = userContext.getCurrentUser();
         Long userId = userContext.getUserId();
 
-
         // ---------------------------------------
-        // ADDRESS (ONLY IF LOGGED IN)
+        // ADDRESS
         // ---------------------------------------
         Address address = null;
 
@@ -331,18 +331,22 @@ public class OrderServiceImpl implements OrderService {
                 throw new BadRequestException("Address does not belong to user");
             }
         }
-        if (currentUser != null && req.getAddressId() == null) {
 
-            List<Address> addressList = addressRepository.findByUserIdAndBitDeletedFlagFalse(userId);
-            if(!addressList.isEmpty()){
+        if (currentUser != null && req.getAddressId() == null) {
+            List<Address> addressList =
+                    addressRepository.findByUserIdAndBitDeletedFlagFalse(userId);
+
+            if (!addressList.isEmpty()) {
                 address = addressList.get(0);
             }
         }
 
         // ---------------------------------------
-        // ITEMS + TOTAL
+        // ITEMS + TOTALS
         // ---------------------------------------
         BigDecimal totalAmount = BigDecimal.ZERO;
+        BigDecimal discountAmount = BigDecimal.ZERO;
+
         List<Map<String, Object>> itemList = new ArrayList<>();
 
         for (OrderItemRequest i : req.getItems()) {
@@ -350,29 +354,61 @@ public class OrderServiceImpl implements OrderService {
             ProductVariant variant = productVariantRepository.findById(i.getProductVariantId())
                     .orElseThrow(() -> new NotFoundException("Invalid product variant"));
 
-            BigDecimal price = variant.getPrice();
-            BigDecimal itemTotal = price.multiply(BigDecimal.valueOf(i.getQuantity()));
-            totalAmount = totalAmount.add(itemTotal);
+            BigDecimal priceAtTime = variant.getPrice();
+            BigDecimal mrp = variant.getMrp() != null ? variant.getMrp() : priceAtTime;
 
+            BigDecimal discountPercent =
+                    variant.getDiscountPercent() != null
+                            ? variant.getDiscountPercent()
+                            : BigDecimal.ZERO;
+
+            BigDecimal itemTotal =
+                    priceAtTime.multiply(BigDecimal.valueOf(i.getQuantity()));
+
+            BigDecimal itemMrpTotal =
+                    mrp.multiply(BigDecimal.valueOf(i.getQuantity()));
+
+            BigDecimal itemDiscount =
+                    itemMrpTotal.subtract(itemTotal);
+
+            totalAmount = totalAmount.add(itemTotal);
+            discountAmount = discountAmount.add(itemDiscount);
+
+            // --------------------------
+            // Variant Image
+            // --------------------------
+            var images =
+                    productImageRepository.findByProductVariantIdAndBitDeletedFlagFalseOrderBySortOrderAsc(
+                            variant.getId()
+                    );
+
+            String image =
+                    images.isEmpty()
+                            ? "/images/default-product.jpg"
+                            : images.get(0).getImageUrl();
+
+            // --------------------------
+            // Item Response
+            // --------------------------
             Map<String, Object> item = new HashMap<>();
             item.put("variantId", variant.getId());
             item.put("productName", variant.getProduct().getName());
+            item.put("productVariantName", variant.getName());
             item.put("variantLabel", variant.getSize());
+            item.put("priceAtTime", priceAtTime);
+            item.put("mrp", mrp);
+            item.put("discountPercent", discountPercent);
             item.put("quantity", i.getQuantity());
-            item.put("price", price);
-            item.put("total", itemTotal);
+            item.put("itemTotal", itemTotal);
+            item.put("variantImage", image);
 
             itemList.add(item);
         }
 
         // ---------------------------------------
-        // DELIVERY CHARGE
+        // DELIVERY + PAYABLE
         // ---------------------------------------
         BigDecimal deliveryCharge = calculateDeliveryCharge(totalAmount);
-
-        // ---------------------------------------
-        // FINAL PAYABLE
-        // ---------------------------------------
         BigDecimal payableAmount = totalAmount.add(deliveryCharge);
 
         // ---------------------------------------
@@ -389,13 +425,18 @@ public class OrderServiceImpl implements OrderService {
             addr.put("city", address.getCity());
             addr.put("state", address.getState());
             addr.put("pincode", address.getPincode());
+
             response.put("address", addr);
+            response.put(
+                    "addressSummary",
+                    address.getFullName() + ", " + address.getAddressLine1()
+            );
         }
 
         response.put("items", itemList);
         response.put("totalAmount", totalAmount);
+        response.put("discountAmount", discountAmount);
         response.put("deliveryCharge", deliveryCharge);
-        response.put("discountAmount", BigDecimal.ZERO);
         response.put("payableAmount", payableAmount);
 
         return ApiResponse.success(response, "Order preview generated");
@@ -403,84 +444,85 @@ public class OrderServiceImpl implements OrderService {
 
 
 
-    @Override
-    public ApiResponse<?> getOrder(Long orderId) {
-        CustomUserDetails user = userContext.getCurrentUser();
-        Orders order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new RuntimeException("Order not found"));
 
-        if (!order.getUser().getId().equals(user.getId())) {
-            return ApiResponse.error("Unauthorized");
-        }
-
-        return ApiResponse.success(convertToDTO(order));
-    }
-
-    @Override
-    public ApiResponse<?> getMyOrders() {
-        CustomUserDetails user = userContext.getCurrentUser();
-        List<Orders> orders = orderRepository.findByUserIdAndBitDeletedFlagFalse(user.getId());
-        List<OrderDTO> list = orders.stream().map(this::convertToDTO).collect(Collectors.toList());
-        return ApiResponse.success(list);
-    }
-
-    @Override
-    @Transactional
-    public ApiResponse<?> cancelOrder(Long orderId) {
-
-        CustomUserDetails currentUser = userContext.getCurrentUser();
-        if (currentUser == null) {
-            return ApiResponse.error("Unauthorized");
-        }
-
-        Orders order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new RuntimeException("Order not found"));
-
-        if (!order.getUser().getId().equals(currentUser.getId())) {
-            return ApiResponse.error("Unauthorized");
-        }
-
-        if (order.getStatus() == OrderStatus.SHIPPED ||
-                order.getStatus() == OrderStatus.DELIVERED) {
-            return ApiResponse.error("Order cannot be cancelled");
-        }
-
-        // -----------------------
-        // RELEASE STOCK
-        // -----------------------
-        List<OrderItem> items =
-                orderItemRepository.findByOrderIdAndBitDeletedFlagFalse(orderId);
-
-        for (OrderItem item : items) {
-            inventoryService.releaseReservedStock(
-                    item.getProductVariant().getId(),
-                    item.getQuantity(),
-                    order.getId()
-            );
-        }
-
-        // -----------------------
-        // ROLLBACK COUPON USAGE
-        // -----------------------
-        Optional<CouponUsage> usageOpt =
-                couponUsageRepository.findByOrderIdAndBitDeletedFlagFalse(orderId);
-
-        usageOpt.ifPresent(usage -> {
-            usage.setBitDeletedFlag(true);
-            couponUsageRepository.save(usage);
-        });
-
-        order = orderRepository.save(order);
-
-        orderStatusManager.changeStatus(
-                order,
-                OrderStatus.PLACED,
-                "Order created"
-        );
-
-
-        return ApiResponse.success(null, "Order cancelled successfully");
-    }
+//    @Override
+//    public ApiResponse<?> getOrder(Long orderId) {
+//        CustomUserDetails user = userContext.getCurrentUser();
+//        Orders order = orderRepository.findById(orderId)
+//                .orElseThrow(() -> new RuntimeException("Order not found"));
+//
+//        if (!order.getUser().getId().equals(user.getId())) {
+//            return ApiResponse.error("Unauthorized");
+//        }
+//
+//        return ApiResponse.success(convertToDTO(order));
+//    }
+//
+//    @Override
+//    public ApiResponse<?> getMyOrders() {
+//        CustomUserDetails user = userContext.getCurrentUser();
+//        List<Orders> orders = orderRepository.findByUserIdAndBitDeletedFlagFalse(user.getId());
+//        List<OrderDTO> list = orders.stream().map(this::convertToDTO).collect(Collectors.toList());
+//        return ApiResponse.success(list);
+//    }
+//
+//    @Override
+//    @Transactional
+//    public ApiResponse<?> cancelOrder(Long orderId) {
+//
+//        CustomUserDetails currentUser = userContext.getCurrentUser();
+//        if (currentUser == null) {
+//            return ApiResponse.error("Unauthorized");
+//        }
+//
+//        Orders order = orderRepository.findById(orderId)
+//                .orElseThrow(() -> new RuntimeException("Order not found"));
+//
+//        if (!order.getUser().getId().equals(currentUser.getId())) {
+//            return ApiResponse.error("Unauthorized");
+//        }
+//
+//        if (order.getStatus() == OrderStatus.SHIPPED ||
+//                order.getStatus() == OrderStatus.DELIVERED) {
+//            return ApiResponse.error("Order cannot be cancelled");
+//        }
+//
+//        // -----------------------
+//        // RELEASE STOCK
+//        // -----------------------
+//        List<OrderItem> items =
+//                orderItemRepository.findByOrderIdAndBitDeletedFlagFalse(orderId);
+//
+//        for (OrderItem item : items) {
+//            inventoryService.releaseReservedStock(
+//                    item.getProductVariant().getId(),
+//                    item.getQuantity(),
+//                    order.getId()
+//            );
+//        }
+//
+//        // -----------------------
+//        // ROLLBACK COUPON USAGE
+//        // -----------------------
+//        Optional<CouponUsage> usageOpt =
+//                couponUsageRepository.findByOrderIdAndBitDeletedFlagFalse(orderId);
+//
+//        usageOpt.ifPresent(usage -> {
+//            usage.setBitDeletedFlag(true);
+//            couponUsageRepository.save(usage);
+//        });
+//
+//        order = orderRepository.save(order);
+//
+//        orderStatusManager.changeStatus(
+//                order,
+//                OrderStatus.PLACED,
+//                "Order created"
+//        );
+//
+//
+//        return ApiResponse.success(null, "Order cancelled successfully");
+//    }
 
 
     private OrderDTO convertToDTO(Orders order) {
@@ -494,21 +536,45 @@ public class OrderServiceImpl implements OrderService {
         dto.setDiscountAmount(order.getDiscountAmount());
         dto.setPayableAmount(order.getPayableAmount());
 
-        dto.setAddressSummary(order.getAddress().getFullName() + ", " + order.getAddress().getAddressLine1());
+        dto.setAddressSummary(
+                order.getAddress().getFullName() + ", " +
+                        order.getAddress().getAddressLine1()
+        );
 
-        List<OrderItem> items = orderItemRepository.findByOrderIdAndBitDeletedFlagFalse(order.getId());
+        List<OrderItem> items =
+                orderItemRepository.findByOrderIdAndBitDeletedFlagFalse(order.getId());
 
         dto.setItems(
                 items.stream().map(i -> {
+
                     OrderItemDTO d = new OrderItemDTO();
                     d.setId(i.getId());
                     d.setVariantId(i.getProductVariant().getId());
                     d.setProductName(i.getProductVariant().getProduct().getName());
+                    d.setProductVariantName(i.getProductVariant().getName());
                     d.setVariantLabel(i.getProductVariant().getSize());
-                    d.setPriceAtTime(i.getPriceAtTime().doubleValue());
-                    d.setTotalPrice(i.getTotalPrice().doubleValue());
+                    d.setPriceAtTime(i.getPriceAtTime());
+                    d.setMrp(i.getProductVariant().getMrp());
+                    d.setDiscountPercent(
+                            i.getProductVariant().getDiscountPercent() != null
+                                    ? i.getProductVariant().getDiscountPercent()
+                                    : BigDecimal.ZERO
+                    );
                     d.setQuantity(i.getQuantity());
+
+                    var images = productImageRepository
+                            .findByProductVariantIdAndBitDeletedFlagFalseOrderBySortOrderAsc(
+                                    i.getProductVariant().getId()
+                            );
+
+                    String image = images.isEmpty()
+                            ? "/images/default-product.jpg"
+                            : images.get(0).getImageUrl();
+
+                    d.setVariantImage(image);
+
                     return d;
+
                 }).collect(Collectors.toList())
         );
 
@@ -537,11 +603,30 @@ public class OrderServiceImpl implements OrderService {
                     d.setId(i.getId());
                     d.setVariantId(i.getProductVariant().getId());
                     d.setProductName(i.getProductVariant().getProduct().getName());
+                    d.setProductVariantName(i.getProductVariant().getName());
                     d.setVariantLabel(i.getProductVariant().getSize());
-                    d.setPriceAtTime(i.getPriceAtTime().doubleValue());
-                    d.setTotalPrice(i.getTotalPrice().doubleValue());
+                    d.setPriceAtTime(i.getPriceAtTime());
+                    d.setMrp(i.getProductVariant().getMrp());
+                    d.setDiscountPercent(
+                            i.getProductVariant().getDiscountPercent() != null
+                                    ? i.getProductVariant().getDiscountPercent()
+                                    : BigDecimal.ZERO
+                    );
                     d.setQuantity(i.getQuantity());
+
+                    var images = productImageRepository
+                            .findByProductVariantIdAndBitDeletedFlagFalseOrderBySortOrderAsc(
+                                    i.getProductVariant().getId()
+                            );
+
+                    String image = images.isEmpty()
+                            ? "/images/default-product.jpg"
+                            : images.get(0).getImageUrl();
+
+                    d.setVariantImage(image);
+
                     return d;
+
                 }).collect(Collectors.toList())
         );
 

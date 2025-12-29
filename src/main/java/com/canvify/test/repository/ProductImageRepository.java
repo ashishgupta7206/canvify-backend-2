@@ -9,4 +9,5 @@ public interface ProductImageRepository extends JpaRepository<ProductImage, Long
     List<ProductImage> findByProductIdAndBitDeletedFlagFalseOrderBySortOrderAsc(Long productId);
     List<ProductImage> findByProductIdAndProductVariantIdIsNull(Long productId);
     List<ProductImage> findByProductVariantId(Long variantId);
+    List<ProductImage> findByProductVariantIdAndBitDeletedFlagFalseOrderBySortOrderAsc(Long variantId);
 }

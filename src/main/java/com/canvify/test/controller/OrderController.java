@@ -21,24 +21,24 @@ public class OrderController {
         return ResponseEntity.ok(orderService.placeOrder(req));
     }
 
-    @GetMapping("/{id}")
-    public ResponseEntity<ApiResponse<?>> getOrder(
-            @PathVariable Long id
-    ) {
-        return ResponseEntity.ok(orderService.getOrder(id));
-    }
-
-    @GetMapping("/my")
-    public ResponseEntity<ApiResponse<?>> myOrders() {
-        return ResponseEntity.ok(orderService.getMyOrders());
-    }
-
-    @PutMapping("/{id}/cancel")
-    public ResponseEntity<ApiResponse<?>> cancelOrder(
-            @PathVariable Long id
-    ) {
-        return ResponseEntity.ok(orderService.cancelOrder(id));
-    }
+//    @GetMapping("/{id}")
+//    public ResponseEntity<ApiResponse<?>> getOrder(
+//            @PathVariable Long id
+//    ) {
+//        return ResponseEntity.ok(orderService.getOrder(id));
+//    }
+//
+//    @GetMapping("/my")
+//    public ResponseEntity<ApiResponse<?>> myOrders() {
+//        return ResponseEntity.ok(orderService.getMyOrders());
+//    }
+//
+//    @PutMapping("/{id}/cancel")
+//    public ResponseEntity<ApiResponse<?>> cancelOrder(
+//            @PathVariable Long id
+//    ) {
+//        return ResponseEntity.ok(orderService.cancelOrder(id));
+//    }
 
     @PostMapping("/preview")
     public ResponseEntity<ApiResponse<?>> previewOrder(
