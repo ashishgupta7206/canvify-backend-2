@@ -9,5 +9,6 @@ import java.util.List;
 public interface PaymentRepository extends JpaRepository<Payment, Long> {
     List<Payment> findByOrderIdAndBitDeletedFlagFalse(Long orderId);
     Optional<Payment> findByProviderPaymentIdAndBitDeletedFlagFalse(String providerPaymentId);
+    Optional<Payment> findByProviderOrderIdAndBitDeletedFlagFalse(String ProviderOrderId);
 
 }

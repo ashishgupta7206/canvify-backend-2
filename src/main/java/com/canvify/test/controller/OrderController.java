@@ -14,7 +14,7 @@ public class OrderController {
 
     private final OrderService orderService;
 
-    @PostMapping
+    @PostMapping("/create")
     public ResponseEntity<ApiResponse<?>> createOrder(
             @RequestBody CreateOrderRequest req
     ) {

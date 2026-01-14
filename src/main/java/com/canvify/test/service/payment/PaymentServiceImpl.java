@@ -15,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -61,7 +62,7 @@ public class PaymentServiceImpl implements PaymentService {
         payment = paymentRepository.save(payment);
 
         PaymentProviderClient provider =
-                ctx.getBean(req.getProvider().name(), PaymentProviderClient.class);
+                ctx.getBean("RAZORPAY", PaymentProviderClient.class);
 
         String providerOrderId = "ORD-" + UUID.randomUUID();
 
@@ -78,8 +79,9 @@ public class PaymentServiceImpl implements PaymentService {
         PaymentResponseDTO dto = new PaymentResponseDTO();
         dto.setPaymentId(payment.getId());
         dto.setPaymentReferenceId(payment.getProviderOrderId());
-        dto.setProviderClientToken((String) res.get("clientSecret"));
-
+        dto.setProviderKey((String) res.get("key"));
+        dto.setAmount(req.getAmount());
+        dto.setCurrency(req.getCurrency());
         return ApiResponse.success(dto, "Payment initiated");
     }
 
@@ -104,15 +106,18 @@ public class PaymentServiceImpl implements PaymentService {
         String event = webhook.getEvent();
         Map<String, Object> data = webhook.getData();
 
+        String providerOrderId = (String) data.get("order_id");
         String providerPaymentId = (String) data.get("payment_id");
 
         Payment payment = paymentRepository
-                .findByProviderPaymentIdAndBitDeletedFlagFalse(providerPaymentId)
+                .findByProviderOrderIdAndBitDeletedFlagFalse(providerOrderId)
                 .orElseThrow(() -> new RuntimeException("Payment not found"));
+
 
         if (payment.getStatus() == PaymentStatus.SUCCESS) {
             return ApiResponse.success("Already processed");
         }
+
 
         payment.setProviderPaymentId(providerPaymentId);
 
@@ -121,14 +126,19 @@ public class PaymentServiceImpl implements PaymentService {
         // ========================
         // PAYMENT SUCCESS
         // ========================
-        if ("payment.captured".equalsIgnoreCase(event)
-                || "payment.success".equalsIgnoreCase(event)) {
+        if ("payment.captured".equalsIgnoreCase(event)) {
+
+            Integer paidAmount = (Integer) data.get("amount");
+
+            if (paidAmount == null ||
+                    payment.getAmount().multiply(BigDecimal.valueOf(100)).longValue() != paidAmount) {
+                return ApiResponse.error("Payment amount mismatch");
+            }
 
             payment.setStatus(PaymentStatus.SUCCESS);
             payment.setPaymentDate(LocalDateTime.now());
             paymentRepository.save(payment);
 
-            // 🔁 INVENTORY: RESERVE → SALE
             List<OrderItem> items =
                     orderItemRepository.findByOrderIdAndBitDeletedFlagFalse(order.getId());
 
@@ -141,7 +151,6 @@ public class PaymentServiceImpl implements PaymentService {
                 );
             }
 
-            // 🔁 ORDER STATUS (STATE MACHINE)
             orderStatusManager.changeStatus(
                     order,
                     OrderStatus.PAID,
@@ -150,6 +159,7 @@ public class PaymentServiceImpl implements PaymentService {
 
             return ApiResponse.success("Payment processed");
         }
+
 
         // ========================
         // PAYMENT FAILED
