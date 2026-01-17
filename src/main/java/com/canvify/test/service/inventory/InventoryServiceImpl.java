@@ -57,7 +57,7 @@ public class InventoryServiceImpl implements InventoryService {
     @Transactional
     public ApiResponse<?> reduceStock(Long variantId, Integer qty, String remarks, Long referenceId) {
 
-        CustomUserDetails currentUser = requireUser();
+//        CustomUserDetails currentUser = requireUser();
 
         ProductVariant variant = getVariant(variantId);
 
@@ -65,7 +65,7 @@ public class InventoryServiceImpl implements InventoryService {
             return ApiResponse.error("Insufficient stock");
         }
 
-        StockLedger ledger = baseLedger(variant, currentUser);
+        StockLedger ledger = baseLedger(variant);
         ledger.setQuantityChange(-qty);
         ledger.setRemarks(remarks);
         ledger.setChangeType(StockChangeType.SALE);
