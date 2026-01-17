@@ -38,9 +38,9 @@ public class PaymentController {
 
         ProviderWebhookDTO webhook = objectMapper.readValue(rawPayload, ProviderWebhookDTO.class);
 
-        paymentService.handleProviderWebhook(webhook, signature, rawPayload);
+        ApiResponse<?> response = paymentService.handleProviderWebhook(webhook, signature, rawPayload);
 
-        return ResponseEntity.ok("OK");
+        return ResponseEntity.ok(response.getMessage());
     }
 
 
