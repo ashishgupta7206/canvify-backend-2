@@ -93,7 +93,6 @@ public class PaymentServiceImpl implements PaymentService {
     // RAZORPAY WEBHOOK
     // -------------------------------------------------
     @Override
-    @Transactional
     public ApiResponse<?> handleProviderWebhook(
             ProviderWebhookDTO webhook,
             String signatureHeader,
