@@ -33,21 +33,16 @@ public class PaymentController {
     @PostMapping("/webhook/razorpay")
     public ResponseEntity<String> razorpayWebhook(
             @RequestBody String rawPayload,
-            @RequestHeader(value = "X-Razorpay-Signature", required = false) String signature
+            @RequestHeader("X-Razorpay-Signature") String signature
     ) throws Exception {
 
-        ProviderWebhookDTO webhook =
-                objectMapper.readValue(rawPayload, ProviderWebhookDTO.class);
+        ProviderWebhookDTO webhook = objectMapper.readValue(rawPayload, ProviderWebhookDTO.class);
 
-        paymentService.handleProviderWebhook(
-                webhook,
-                signature,
-                rawPayload
-        );
+        paymentService.handleProviderWebhook(webhook, signature, rawPayload);
 
-        // Razorpay expects plain 200 OK
         return ResponseEntity.ok("OK");
     }
+
 
     // -------------------------------------------------
     // LIST PAYMENTS FOR ORDER

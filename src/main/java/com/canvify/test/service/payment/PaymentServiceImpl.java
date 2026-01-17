@@ -11,6 +11,8 @@ import com.canvify.test.request.payment.CreatePaymentRequest;
 import com.canvify.test.model.ApiResponse;
 import com.canvify.test.service.inventory.InventoryService;
 import com.canvify.test.service.orderstatus.OrderStatusManager;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,6 +35,8 @@ public class PaymentServiceImpl implements PaymentService {
     private final OrderStatusManager orderStatusManager;
     private final OrderItemRepository orderItemRepository;
     private final org.springframework.context.ApplicationContext ctx;
+    private final ObjectMapper objectMapper;
+
 
     // -------------------------------------------------
     // CREATE PAYMENT (CLIENT SIDE INITIATION)
@@ -103,100 +107,111 @@ public class PaymentServiceImpl implements PaymentService {
             return ApiResponse.error("Invalid webhook signature");
         }
 
-        String event = webhook.getEvent();
-        Map<String, Object> data = webhook.getData();
+        try {
+            JsonNode root = objectMapper.readTree(rawPayload);
 
-        String providerOrderId = (String) data.get("order_id");
-        String providerPaymentId = (String) data.get("payment_id");
+            String event = root.path("event").asText();
 
-        Payment payment = paymentRepository
-                .findByProviderOrderIdAndBitDeletedFlagFalse(providerOrderId)
-                .orElseThrow(() -> new RuntimeException("Payment not found"));
+            JsonNode paymentEntity = root.path("payload")
+                    .path("payment")
+                    .path("entity");
 
+            String providerOrderId = paymentEntity.path("order_id").asText(null);
+            String providerPaymentId = paymentEntity.path("id").asText(null);
 
-        if (payment.getStatus() == PaymentStatus.SUCCESS) {
-            return ApiResponse.success("Already processed");
-        }
+            Long paidAmount = paymentEntity.path("amount").isMissingNode()
+                    ? null
+                    : paymentEntity.path("amount").asLong();
 
-
-        payment.setProviderPaymentId(providerPaymentId);
-
-        Orders order = payment.getOrder();
-
-        // ========================
-        // PAYMENT SUCCESS
-        // ========================
-        if ("payment.captured".equalsIgnoreCase(event)) {
-
-            Number paidAmountNum = (Number) data.get("amount");
-            Long paidAmount = paidAmountNum == null ? null : paidAmountNum.longValue();
-
-            Long expectedAmount = payment.getAmount()
-                    .multiply(BigDecimal.valueOf(100))
-                    .longValue();
-
-            if (paidAmount == null || !expectedAmount.equals(paidAmount)) {
-                return ApiResponse.error("Payment amount mismatch");
+            if (providerOrderId == null) {
+                return ApiResponse.error("Missing provider order id in webhook");
             }
 
-            payment.setStatus(PaymentStatus.SUCCESS);
-            payment.setPaymentDate(LocalDateTime.now());
-            paymentRepository.save(payment);
+            Payment payment = paymentRepository
+                    .findByProviderOrderIdAndBitDeletedFlagFalse(providerOrderId)
+                    .orElseThrow(() -> new RuntimeException("Payment not found"));
 
-            List<OrderItem> items =
-                    orderItemRepository.findByOrderIdAndBitDeletedFlagFalse(order.getId());
+            if (payment.getStatus() == PaymentStatus.SUCCESS) {
+                return ApiResponse.success("Already processed");
+            }
 
-            for (OrderItem item : items) {
-                inventoryService.reduceStock(
-                        item.getProductVariant().getId(),
-                        item.getQuantity(),
-                        "Order paid",
-                        order.getId()
+            payment.setProviderPaymentId(providerPaymentId);
+
+            Orders order = payment.getOrder();
+
+            // ========================
+            // PAYMENT SUCCESS
+            // ========================
+            if ("payment.captured".equalsIgnoreCase(event)) {
+
+                Long expectedAmount = payment.getAmount()
+                        .multiply(BigDecimal.valueOf(100))
+                        .longValue();
+
+                if (paidAmount == null || !expectedAmount.equals(paidAmount)) {
+                    return ApiResponse.error("Payment amount mismatch");
+                }
+
+                payment.setStatus(PaymentStatus.SUCCESS);
+                payment.setPaymentDate(LocalDateTime.now());
+                paymentRepository.save(payment);
+
+                List<OrderItem> items =
+                        orderItemRepository.findByOrderIdAndBitDeletedFlagFalse(order.getId());
+
+                for (OrderItem item : items) {
+                    inventoryService.reduceStock(
+                            item.getProductVariant().getId(),
+                            item.getQuantity(),
+                            "Order paid",
+                            order.getId()
+                    );
+                }
+
+                orderStatusManager.changeStatus(
+                        order,
+                        OrderStatus.PAID,
+                        "Payment successful"
                 );
+
+                return ApiResponse.success("Payment processed");
             }
 
-            orderStatusManager.changeStatus(
-                    order,
-                    OrderStatus.PAID,
-                    "Payment successful"
-            );
+            // ========================
+            // PAYMENT FAILED
+            // ========================
+            if ("payment.failed".equalsIgnoreCase(event)) {
 
-            return ApiResponse.success("Payment processed");
-        }
+                payment.setStatus(PaymentStatus.FAILED);
+                paymentRepository.save(payment);
 
+                List<OrderItem> items =
+                        orderItemRepository.findByOrderIdAndBitDeletedFlagFalse(order.getId());
 
-        // ========================
-        // PAYMENT FAILED
-        // ========================
-        if ("payment.failed".equalsIgnoreCase(event)) {
+                for (OrderItem item : items) {
+                    inventoryService.releaseReservedStock(
+                            item.getProductVariant().getId(),
+                            item.getQuantity(),
+                            order.getId()
+                    );
+                }
 
-            payment.setStatus(PaymentStatus.FAILED);
-            paymentRepository.save(payment);
+                couponUsageRepository.findByOrderIdAndBitDeletedFlagFalse(order.getId())
+                        .ifPresent(u -> {
+                            u.setBitDeletedFlag(true);
+                            couponUsageRepository.save(u);
+                        });
 
-            // 🔁 RELEASE RESERVED STOCK
-            List<OrderItem> items =
-                    orderItemRepository.findByOrderIdAndBitDeletedFlagFalse(order.getId());
-
-            for (OrderItem item : items) {
-                inventoryService.releaseReservedStock(
-                        item.getProductVariant().getId(),
-                        item.getQuantity(),
-                        order.getId()
-                );
+                return ApiResponse.success("Payment failed handled");
             }
 
-            // 🔁 ROLLBACK COUPON
-            couponUsageRepository.findByOrderIdAndBitDeletedFlagFalse(order.getId())
-                    .ifPresent(u -> {
-                        u.setBitDeletedFlag(true);
-                        couponUsageRepository.save(u);
-                    });
+            return ApiResponse.success("Webhook ignored");
 
-            return ApiResponse.success("Payment failed handled");
+        } catch (Exception e) {
+            return ApiResponse.error("Webhook processing failed: " + e.getMessage());
         }
-
-        return ApiResponse.success("Webhook ignored");
     }
+
 
     // -------------------------------------------------
     // LIST PAYMENTS FOR ORDER
