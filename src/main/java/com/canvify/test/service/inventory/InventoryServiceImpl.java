@@ -115,12 +115,12 @@ public class InventoryServiceImpl implements InventoryService {
     @Override
     @Transactional
     public ApiResponse<?> releaseReservedStock(Long variantId, Integer qty, Long referenceId) {
-
-        CustomUserDetails currentUser = requireUser();
+//
+//        CustomUserDetails currentUser = requireUser();
 
         ProductVariant variant = getVariant(variantId);
 
-        StockLedger ledger = baseLedger(variant, currentUser);
+        StockLedger ledger = baseLedger(variant);
         ledger.setQuantityChange(qty);
         ledger.setChangeType(StockChangeType.CANCEL_RESERVATION);
         ledger.setReferenceId(referenceId);
