@@ -31,10 +31,10 @@ public class OrderExpiryService {
     private final CouponUsageRepository couponUsageRepository;
     private final OrderStatusManager orderStatusManager;
 
-    private static final int EXPIRY_MINUTES = 1;
+    private static final int EXPIRY_MINUTES = 100;
 
     @Transactional
-    @Scheduled(fixedDelay = 60_000) // every 1 minute
+    @Scheduled(fixedDelay = 60_00_000) // every 1 minute
     public void expireUnpaidOrders() {
 
         LocalDateTime expiryTime =

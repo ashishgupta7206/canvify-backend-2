@@ -4,10 +4,12 @@ import com.canvify.test.dto.order.OrderDTO;
 import com.canvify.test.request.order.CreateOrderRequest;
 import com.canvify.test.model.ApiResponse;
 import com.canvify.test.security.CustomUserDetails;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
 public interface OrderService {
 
-    ApiResponse<?> placeOrder(CreateOrderRequest req);
+    ApiResponse<?> placeOrder(CreateOrderRequest req, HttpServletRequest request, HttpServletResponse response);
 
     ApiResponse<?> getOrder(Long orderId);
 

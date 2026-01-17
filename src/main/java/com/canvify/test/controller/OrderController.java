@@ -3,6 +3,8 @@ package com.canvify.test.controller;
 import com.canvify.test.request.order.CreateOrderRequest;
 import com.canvify.test.model.ApiResponse;
 import com.canvify.test.service.order.OrderService;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -16,10 +18,13 @@ public class OrderController {
 
     @PostMapping("/create")
     public ResponseEntity<ApiResponse<?>> createOrder(
-            @RequestBody CreateOrderRequest req
+            @RequestBody CreateOrderRequest req,
+            HttpServletRequest request,
+            HttpServletResponse response
     ) {
-        return ResponseEntity.ok(orderService.placeOrder(req));
+        return ResponseEntity.ok(orderService.placeOrder(req, request, response));
     }
+
 
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<?>> getOrder(

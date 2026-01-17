@@ -54,4 +54,11 @@ public class Orders extends Auditable {
     @Enumerated(EnumType.STRING)
     @Column(name = "payment_status", length = 50)
     private PaymentStatus paymentStatus;
+
+    @Column(name = "guest_id")
+    private String guestId;
+
+    @Column(name = "is_guest_order")
+    private Boolean isGuestOrder;
+
 }

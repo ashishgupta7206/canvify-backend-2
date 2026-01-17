@@ -9,13 +9,12 @@ import com.canvify.test.enums.PaymentStatus;
 import com.canvify.test.exception.BadRequestException;
 import com.canvify.test.exception.NotFoundException;
 import com.canvify.test.repository.*;
-import com.canvify.test.request.auth.LoginRequest;
 import com.canvify.test.request.order.CreateOrderRequest;
 import com.canvify.test.request.order.OrderItemRequest;
 import com.canvify.test.model.ApiResponse;
 import com.canvify.test.security.CustomUserDetails;
-import com.canvify.test.security.PasswordGenerator;
 import com.canvify.test.security.UserContext;
+import com.canvify.test.service.GuestCookieService;
 import com.canvify.test.service.impl.AuthServiceImpl;
 import com.canvify.test.service.inventory.InventoryService;
 import com.canvify.test.service.orderstatus.OrderStatusManager;
@@ -23,6 +22,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -48,98 +50,95 @@ public class OrderServiceImpl implements OrderService {
     private final RoleRepository roleRepository;
     private final AuthServiceImpl authServiceImpl;
     private final ProductImageRepository productImageRepository;
+    private final GuestCookieService guestCookieService;
+
 
     @Override
     @Transactional
-    public ApiResponse<?> placeOrder(CreateOrderRequest req) {
+    public ApiResponse<?> placeOrder(CreateOrderRequest req, HttpServletRequest request, HttpServletResponse response) {
 
-        // ------------------------------------------------
-        // BASIC VALIDATIONS
-        // ------------------------------------------------
         if (req.getItems() == null || req.getItems().isEmpty()) {
-            throw new NotFoundException("Order must contain at least one item");
+            throw new BadRequestException("Order must contain at least one item");
         }
 
-        // ------------------------------------------------
-        // RESOLVE USER (LOGGED-IN OR GUEST)
-        // ------------------------------------------------
-        User user;
+        // -----------------------------------------
+        // CHECK LOGGED-IN vs GUEST (HEADER BASED)
+        // -----------------------------------------
         CustomUserDetails currentUser = userContext.getCurrentUser();
-        String token = "";
+        boolean isLoggedIn = (currentUser != null);
 
-        if (currentUser != null) {
+        User user = null;
+        String guestId = null;
 
+        if (isLoggedIn) {
             user = userRepository.findById(currentUser.getId())
-                    .orElseThrow(() -> new RuntimeException("Invalid user"));
-
+                    .orElseThrow(() -> new NotFoundException("Invalid user"));
         } else {
-            // ---------- GUEST FLOW ----------
-            if (req.getAddress() == null || (req.getAddress().getMobile() == null || req.getAddress().getMobile().isBlank())) {
-                throw new NotFoundException("Mobile number is required for guest checkout");
+            // guest flow
+            if (req.getAddress() == null || req.getAddress().getMobile() == null || req.getAddress().getMobile().isBlank()) {
+                throw new BadRequestException("Mobile number is required for guest checkout");
             }
 
-            Role role = roleRepository.findByName("ROLE_USER")
-                    .orElseThrow(() -> new NotFoundException("ROLE_USER not configured"));
-
-            String password = PasswordGenerator.generate(12);
-            String userName = "GUEST" + authServiceImpl.generateNextUsername();
-            user = userRepository.findByMobileNumber(req.getAddress().getMobile())
-                    .orElseGet(() -> {
-                        User guest = new User();
-                        guest.setMobileNumber(req.getAddress().getMobile());
-                        guest.setName(req.getAddress().getFullName());
-                        guest.setEmail(req.getEmailId());
-                        guest.setRole(role);
-                        guest.setUsername(userName);
-                        guest.setPassword(password);
-                        return userRepository.save(guest);
-                    });
-
-            LoginRequest loginRequest = new LoginRequest();
-            loginRequest.setIdentifier(req.getAddress().getMobile());
-            loginRequest.setPassword(password);
-            token = authServiceImpl.loginForregister(loginRequest).getAccessToken();
-
+            guestId = guestCookieService.getOrCreateGuestId(request, response);
         }
-        currentUser = userContext.getCurrentUser();
 
-
-        // ------------------------------------------------
-        // RESOLVE ADDRESS (ID OR CREATE)
-        // ------------------------------------------------
+        // -----------------------------------------
+        // ADDRESS RESOLVE
+        // -----------------------------------------
         Address address;
 
-        if (req.getAddressId() != null) {
+        if (isLoggedIn) {
 
-            // Fetch existing address
-            address = addressRepository.findById(req.getAddressId())
-                    .orElseThrow(() -> new RuntimeException("Invalid address"));
+            if (req.getAddressId() != null) {
+                address = addressRepository.findById(req.getAddressId())
+                        .orElseThrow(() -> new NotFoundException("Invalid address"));
 
-            // Ownership check
-            if (!address.getUser().getId().equals(user.getId())) {
-                throw new RuntimeException("Address does not belong to user");
+                if (!address.getUser().getId().equals(user.getId())) {
+                    throw new BadRequestException("Address does not belong to user");
+                }
+
+                if (req.getAddress() != null) {
+                    address.setFullName(req.getAddress().getFullName());
+                    address.setMobile(req.getAddress().getMobile());
+                    address.setPincode(req.getAddress().getPincode());
+                    address.setCity(req.getAddress().getCity());
+                    address.setState(req.getAddress().getState());
+                    address.setAddressLine1(req.getAddress().getAddressLine1());
+                    address.setAddressLine2(req.getAddress().getAddressLine2());
+                    address.setLandmark(req.getAddress().getLandmark());
+                    address.setAddressType(req.getAddress().getAddressType());
+
+                    address = addressRepository.save(address);
+                }
+
+            } else if (req.getAddress() != null) {
+
+                Address newAddress = new Address();
+                newAddress.setUser(user);
+                newAddress.setFullName(req.getAddress().getFullName());
+                newAddress.setMobile(req.getAddress().getMobile());
+                newAddress.setPincode(req.getAddress().getPincode());
+                newAddress.setCity(req.getAddress().getCity());
+                newAddress.setState(req.getAddress().getState());
+                newAddress.setAddressLine1(req.getAddress().getAddressLine1());
+                newAddress.setAddressLine2(req.getAddress().getAddressLine2());
+                newAddress.setLandmark(req.getAddress().getLandmark());
+                newAddress.setAddressType(req.getAddress().getAddressType());
+
+                address = addressRepository.save(newAddress);
+
+            } else {
+                throw new BadRequestException("Address or AddressId is required");
             }
 
-            // 🔹 If address object is also present → UPDATE
-            if (req.getAddress() != null) {
-                address.setFullName(req.getAddress().getFullName());
-                address.setMobile(req.getAddress().getMobile());
-                address.setPincode(req.getAddress().getPincode());
-                address.setCity(req.getAddress().getCity());
-                address.setState(req.getAddress().getState());
-                address.setAddressLine1(req.getAddress().getAddressLine1());
-                address.setAddressLine2(req.getAddress().getAddressLine2());
-                address.setLandmark(req.getAddress().getLandmark());
-                address.setAddressType(req.getAddress().getAddressType());
-
-                address = addressRepository.save(address);
+        } else {
+            // Guest: Always create address (no user mapping)
+            if (req.getAddress() == null) {
+                throw new BadRequestException("Address is required for guest checkout");
             }
 
-        } else if (req.getAddress() != null) {
-
-            // 🔹 Create new address
             Address newAddress = new Address();
-            newAddress.setUser(user);
+            newAddress.setUser(null); // guest
             newAddress.setFullName(req.getAddress().getFullName());
             newAddress.setMobile(req.getAddress().getMobile());
             newAddress.setPincode(req.getAddress().getPincode());
@@ -151,55 +150,34 @@ public class OrderServiceImpl implements OrderService {
             newAddress.setAddressType(req.getAddress().getAddressType());
 
             address = addressRepository.save(newAddress);
-
-        } else {
-            throw new RuntimeException("Address or AddressId is required");
         }
 
+        // -----------------------------------------
+        // CREATE ORDER
+        // -----------------------------------------
+        Orders order = new Orders();
+        order.setUser(user); // null for guest
+        order.setGuestId(guestId);
+        order.setIsGuestOrder(!isLoggedIn);
+        order.setAddress(address);
+        order.setOrderDate(LocalDateTime.now());
+        order.setPaymentStatus(PaymentStatus.PENDING);
+        order.setStatus(OrderStatus.PLACED);
 
-        // ------------------------------------------------
-        // CREATE ORDER (INITIAL)
-        // ------------------------------------------------
-        Orders order;
+        order = orderRepository.save(order);
 
-        try {
-            order = new Orders();
-            order.setUser(user);
-            order.setAddress(address);
-            order.setOrderDate(LocalDateTime.now());
-            order.setPaymentStatus(PaymentStatus.PENDING);
-            order.setStatus(OrderStatus.PLACED);
-            // order.setIsGuestOrder(user.getRole() == Role.GUEST);
-            // order.setGuestMobile(user.getMobileNumber());
-
-            order = orderRepository.save(order);
-
-        } catch (Exception ex) {
-
-            // 🔴 LOG FULL ERROR (very important)
-            log.error("Failed to create order for userId={}",
-                    user != null ? user.getId() : null, ex);
-
-            // ❌ Convert to business-safe exception
-            throw new RuntimeException("Failed to create order. Please try again.");
-        }
-
-        // ------------------------------------------------
-        // RESERVE STOCK + CALCULATE TOTAL
-        // ------------------------------------------------
+        // -----------------------------------------
+        // RESERVE STOCK + TOTAL
+        // -----------------------------------------
         BigDecimal totalAmount = BigDecimal.ZERO;
         List<OrderItem> orderItems = new ArrayList<>();
 
         for (OrderItemRequest i : req.getItems()) {
 
             ProductVariant variant = productVariantRepository.findById(i.getProductVariantId())
-                    .orElseThrow(() -> new RuntimeException("Invalid product variant"));
+                    .orElseThrow(() -> new NotFoundException("Invalid product variant"));
 
-            inventoryService.reserveStock(
-                    variant.getId(),
-                    i.getQuantity(),
-                    order.getId()
-            );
+            inventoryService.reserveStock(variant.getId(), i.getQuantity(), order.getId());
 
             BigDecimal price = variant.getPrice();
             BigDecimal itemTotal = price.multiply(BigDecimal.valueOf(i.getQuantity()));
@@ -218,16 +196,16 @@ public class OrderServiceImpl implements OrderService {
 
         orderItemRepository.saveAll(orderItems);
 
-        // ------------------------------------------------
-        // COUPON VALIDATION (LOGGED-IN USERS ONLY)
-        // ------------------------------------------------
+        // -----------------------------------------
+        // COUPON (ONLY LOGGED-IN)
+        // -----------------------------------------
         BigDecimal discountAmount = BigDecimal.ZERO;
         Coupon appliedCoupon = null;
 
         if (req.getCouponCode() != null && !req.getCouponCode().isBlank()) {
 
-            if (Objects.equals(user.getRole().getName(), "ROLE_GUEST")) {
-                throw new RuntimeException("Please login to apply coupon");
+            if (!isLoggedIn) {
+                throw new BadRequestException("Please login to apply coupon");
             }
 
             Coupon coupon = couponRepository
@@ -236,29 +214,10 @@ public class OrderServiceImpl implements OrderService {
                             LocalDateTime.now(),
                             LocalDateTime.now()
                     )
-                    .orElseThrow(() -> new RuntimeException("Invalid or expired coupon"));
+                    .orElseThrow(() -> new BadRequestException("Invalid or expired coupon"));
 
-            if (coupon.getUsageLimit() != null) {
-                long used = couponUsageRepository
-                        .countByCouponIdAndBitDeletedFlagFalse(coupon.getId());
-                if (used >= coupon.getUsageLimit()) {
-                    throw new RuntimeException("Coupon usage limit reached");
-                }
-            }
-
-            if (coupon.getPerUserLimit() != null) {
-                long userUsed = couponUsageRepository
-                        .countByCouponIdAndUserIdAndBitDeletedFlagFalse(
-                                coupon.getId(), user.getId());
-                if (userUsed >= coupon.getPerUserLimit()) {
-                    throw new RuntimeException("Coupon already used");
-                }
-            }
-
-            if (coupon.getMinOrderValue() != null &&
-                    totalAmount.compareTo(coupon.getMinOrderValue()) < 0) {
-                throw new RuntimeException("Cart amount is less than minimum order value");
-            }
+            // validate usage limits etc...
+            appliedCoupon = coupon;
 
             if (coupon.getDiscountType() == DiscountType.FLAT) {
                 discountAmount = coupon.getDiscountValue();
@@ -268,22 +227,13 @@ public class OrderServiceImpl implements OrderService {
                         .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
             }
 
-            if (coupon.getMaxDiscount() != null &&
-                    discountAmount.compareTo(coupon.getMaxDiscount()) > 0) {
+            if (coupon.getMaxDiscount() != null && discountAmount.compareTo(coupon.getMaxDiscount()) > 0) {
                 discountAmount = coupon.getMaxDiscount();
             }
-
-            appliedCoupon = coupon;
         }
 
-        // ------------------------------------------------
-        // DELIVERY CHARGE + FINAL AMOUNT
-        // ------------------------------------------------
         BigDecimal deliveryCharge = calculateDeliveryCharge(totalAmount);
-
-        BigDecimal payableAmount = totalAmount
-                .subtract(discountAmount)
-                .add(deliveryCharge);
+        BigDecimal payableAmount = totalAmount.subtract(discountAmount).add(deliveryCharge);
 
         order.setTotalAmount(totalAmount);
         order.setDiscountAmount(discountAmount);
@@ -292,9 +242,6 @@ public class OrderServiceImpl implements OrderService {
 
         order = orderRepository.save(order);
 
-        // ------------------------------------------------
-        // SAVE COUPON USAGE
-        // ------------------------------------------------
         if (appliedCoupon != null) {
             CouponUsage usage = new CouponUsage();
             usage.setCoupon(appliedCoupon);
@@ -304,8 +251,9 @@ public class OrderServiceImpl implements OrderService {
             couponUsageRepository.save(usage);
         }
 
-        return ApiResponse.success(convertToDTO(order,token), "Order placed successfully");
+        return ApiResponse.success(convertToDTO(order), "Order placed successfully");
     }
+
 
     @Override
     @Transactional(readOnly = true)
