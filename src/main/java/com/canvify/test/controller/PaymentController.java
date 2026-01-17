@@ -4,13 +4,10 @@ import com.canvify.test.dto.payment.ProviderWebhookDTO;
 import com.canvify.test.request.payment.CreatePaymentRequest;
 import com.canvify.test.model.ApiResponse;
 import com.canvify.test.service.payment.PaymentService;
-import jakarta.servlet.http.HttpServletRequest;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
-import java.io.BufferedReader;
-import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/payments")
@@ -18,6 +15,7 @@ import java.util.stream.Collectors;
 public class PaymentController {
 
     private final PaymentService paymentService;
+    private final ObjectMapper objectMapper;
 
     // -------------------------------------------------
     // CREATE PAYMENT (CLIENT → SERVER)
@@ -34,16 +32,12 @@ public class PaymentController {
     // -------------------------------------------------
     @PostMapping("/webhook/razorpay")
     public ResponseEntity<String> razorpayWebhook(
-            @RequestBody ProviderWebhookDTO webhook,
-            HttpServletRequest request
+            @RequestBody String rawPayload,
+            @RequestHeader(value = "X-Razorpay-Signature", required = false) String signature
     ) throws Exception {
 
-        String signature =
-                request.getHeader("X-Razorpay-Signature");
-
-        String rawPayload = new BufferedReader(request.getReader())
-                .lines()
-                .collect(Collectors.joining(System.lineSeparator()));
+        ProviderWebhookDTO webhook =
+                objectMapper.readValue(rawPayload, ProviderWebhookDTO.class);
 
         paymentService.handleProviderWebhook(
                 webhook,

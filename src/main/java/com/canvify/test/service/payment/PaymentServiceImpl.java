@@ -128,10 +128,14 @@ public class PaymentServiceImpl implements PaymentService {
         // ========================
         if ("payment.captured".equalsIgnoreCase(event)) {
 
-            Integer paidAmount = (Integer) data.get("amount");
+            Number paidAmountNum = (Number) data.get("amount");
+            Long paidAmount = paidAmountNum == null ? null : paidAmountNum.longValue();
 
-            if (paidAmount == null ||
-                    payment.getAmount().multiply(BigDecimal.valueOf(100)).longValue() != paidAmount) {
+            Long expectedAmount = payment.getAmount()
+                    .multiply(BigDecimal.valueOf(100))
+                    .longValue();
+
+            if (paidAmount == null || !expectedAmount.equals(paidAmount)) {
                 return ApiResponse.error("Payment amount mismatch");
             }
 
