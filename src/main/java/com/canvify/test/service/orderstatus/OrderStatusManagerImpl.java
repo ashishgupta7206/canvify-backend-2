@@ -25,7 +25,7 @@ public class OrderStatusManagerImpl implements OrderStatusManager {
     // ORDER STATE MACHINE
     // -----------------------
     private static final Map<OrderStatus, Set<OrderStatus>> TRANSITIONS = Map.of(
-            OrderStatus.PLACED, Set.of(OrderStatus.CONFIRMED, OrderStatus.CANCELLED),
+            OrderStatus.PLACED, Set.of(OrderStatus.CONFIRMED, OrderStatus.PAID, OrderStatus.CANCELLED), // ✅ add PAID
             OrderStatus.CONFIRMED, Set.of(OrderStatus.PAID, OrderStatus.CANCELLED),
             OrderStatus.PAID, Set.of(OrderStatus.SHIPPED),
             OrderStatus.SHIPPED, Set.of(OrderStatus.DELIVERED)
