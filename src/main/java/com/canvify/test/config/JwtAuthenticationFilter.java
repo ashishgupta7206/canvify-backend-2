@@ -38,10 +38,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             String jwt = getJwtFromRequest(request);
             String path = request.getServletPath();
 
-            if ("/payment/razorpay/webhook".equals(path)) {
+            if (path != null && path.startsWith("/api/payments/webhook/razorpay")) {
                 filterChain.doFilter(request, response);
                 return;
             }
+
 
             if (StringUtils.hasText(jwt) && tokenProvider.validateToken(jwt)) {
                 Long userId = tokenProvider.getUserIdFromJWT(jwt);
