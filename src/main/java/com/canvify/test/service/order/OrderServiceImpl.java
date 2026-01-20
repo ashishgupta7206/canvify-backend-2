@@ -191,6 +191,16 @@ public class OrderServiceImpl implements OrderService {
             item.setPriceAtTime(price);
             item.setTotalPrice(itemTotal);
 
+            // ---------------------------
+            // PERSONALIZATION (NEW)
+            // ---------------------------
+
+            if (i.getPersonalizationName() != null) {
+                String name = validatePersonalizationName(i.getPersonalizationName());
+                item.setPersonalizationName(name);
+            }
+
+
             orderItems.add(item);
         }
 
@@ -350,6 +360,12 @@ public class OrderServiceImpl implements OrderService {
             item.put("quantity", i.getQuantity());
             item.put("itemTotal", itemTotal);
             item.put("variantImage", image);
+
+            if (i.getPersonalizationName() != null) {
+                item.put("personalizationName",
+                        validatePersonalizationName(i.getPersonalizationName()));
+            }
+
 
             itemList.add(item);
         }
@@ -511,6 +527,8 @@ public class OrderServiceImpl implements OrderService {
                     );
                     d.setQuantity(i.getQuantity());
 
+                    d.setPersonalizationName(i.getPersonalizationName());
+
                     var images = productImageRepository
                             .findByProductVariantIdAndBitDeletedFlagFalseOrderBySortOrderAsc(
                                     i.getProductVariant().getId()
@@ -563,6 +581,8 @@ public class OrderServiceImpl implements OrderService {
                     );
                     d.setQuantity(i.getQuantity());
 
+                    d.setPersonalizationName(i.getPersonalizationName());
+
                     var images = productImageRepository
                             .findByProductVariantIdAndBitDeletedFlagFalseOrderBySortOrderAsc(
                                     i.getProductVariant().getId()
@@ -589,5 +609,25 @@ public class OrderServiceImpl implements OrderService {
         }
         return BigDecimal.valueOf(40);
     }
+
+    private String validatePersonalizationName(String name) {
+
+        if (name == null || name.isBlank()) {
+            throw new BadRequestException("Personalization name cannot be empty");
+        }
+
+        String cleaned = name.trim().toUpperCase();
+
+        if (cleaned.length() > 15) {
+            throw new BadRequestException("Personalization name max length is 15");
+        }
+
+        if (!cleaned.matches("[A-Z ]+")) {
+            throw new BadRequestException("Personalization name can contain only alphabets");
+        }
+
+        return cleaned;
+    }
+
 
 }

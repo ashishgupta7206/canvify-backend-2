@@ -6,4 +6,6 @@ import lombok.Data;
 public class OrderItemRequest {
     private Long productVariantId;
     private Integer quantity;
+
+    private String personalizationName;
 }

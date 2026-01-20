@@ -19,4 +19,6 @@ public class OrderItemDTO {
     private BigDecimal DiscountPercent;
     private String variantImage;
 
+    private String personalizationName;
+
 }

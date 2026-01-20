@@ -40,4 +40,8 @@ public class OrderItem extends Auditable {
 
     @Column(name = "total_price", precision = 10, scale = 2)
     private BigDecimal totalPrice;
+
+    @Column(name = "personalization_name")
+    private String personalizationName;
+
 }
