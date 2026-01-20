@@ -20,4 +20,8 @@ public interface PaymentProviderClient {
      * Process refund request with provider, return provider refund id & status.
      */
     Map<String, Object> refundPayment(String paymentReferenceId, BigDecimal amount, String reason);
+
+
+    boolean verifyPaymentSignature(String orderId, String paymentId, String signature);
+
 }

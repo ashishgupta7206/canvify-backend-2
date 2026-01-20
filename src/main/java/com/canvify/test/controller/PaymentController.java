@@ -3,6 +3,7 @@ package com.canvify.test.controller;
 import com.canvify.test.dto.payment.ProviderWebhookDTO;
 import com.canvify.test.request.payment.CreatePaymentRequest;
 import com.canvify.test.model.ApiResponse;
+import com.canvify.test.request.payment.VerifyPaymentRequest;
 import com.canvify.test.service.payment.PaymentService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -54,5 +55,10 @@ public class PaymentController {
         return ResponseEntity.ok(
                 paymentService.getPaymentsForOrder(orderId)
         );
+    }
+
+    @PostMapping("/verify")
+    public ApiResponse<?> verifyPayment(@RequestBody VerifyPaymentRequest req) {
+        return paymentService.verifyPayment(req);
     }
 }

@@ -5,7 +5,10 @@ import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -14,6 +17,7 @@ public class RazorpayPaymentClient implements PaymentProviderClient {
 
     private final RazorpayClient razorpay;
     private final String razorpayKeyId;
+    private final String razorpayKeySecret; // ✅ store secret
 
     @Value("${razorpay.webhook.secret}")
     private String webhookSecret;
@@ -23,7 +27,8 @@ public class RazorpayPaymentClient implements PaymentProviderClient {
             @Value("${razorpay.key.secret}") String keySecret
     ) throws RazorpayException {
         this.razorpay = new RazorpayClient(keyId, keySecret);
-        this.razorpayKeyId = keyId; // ✅ store public key
+        this.razorpayKeyId = keyId;
+        this.razorpayKeySecret = keySecret; // ✅ FIX
     }
 
     // -------------------------------------------------
@@ -49,7 +54,7 @@ public class RazorpayPaymentClient implements PaymentProviderClient {
             response.put("orderId", order.get("id"));
             response.put("amount", order.get("amount"));
             response.put("currency", order.get("currency"));
-            response.put("key", razorpayKeyId); // ✅ FIXED
+            response.put("key", razorpayKeyId);
             response.put("status", order.get("status"));
             response.put("receipt", order.get("receipt"));
 
@@ -99,5 +104,40 @@ public class RazorpayPaymentClient implements PaymentProviderClient {
         } catch (RazorpayException e) {
             throw new RuntimeException("Refund failed", e);
         }
+    }
+
+    // -------------------------------------------------
+    // VERIFY PAYMENT SIGNATURE (Frontend handler)
+    // -------------------------------------------------
+    @Override
+    public boolean verifyPaymentSignature(String orderId, String paymentId, String signature) {
+        try {
+            String payload = orderId + "|" + paymentId;
+
+            Mac sha256_HMAC = Mac.getInstance("HmacSHA256");
+            SecretKeySpec secretKey = new SecretKeySpec(
+                    razorpayKeySecret.getBytes(StandardCharsets.UTF_8),
+                    "HmacSHA256"
+            );
+
+            sha256_HMAC.init(secretKey);
+
+            byte[] hash = sha256_HMAC.doFinal(payload.getBytes(StandardCharsets.UTF_8));
+
+            String generatedSignature = bytesToHex(hash);
+
+            return generatedSignature.equals(signature);
+
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private String bytesToHex(byte[] bytes) {
+        StringBuilder sb = new StringBuilder(bytes.length * 2);
+        for (byte b : bytes) {
+            sb.append(String.format("%02x", b));
+        }
+        return sb.toString();
     }
 }

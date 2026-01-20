@@ -9,6 +9,7 @@ import com.canvify.test.integration.PaymentProviderClient;
 import com.canvify.test.repository.*;
 import com.canvify.test.request.payment.CreatePaymentRequest;
 import com.canvify.test.model.ApiResponse;
+import com.canvify.test.request.payment.VerifyPaymentRequest;
 import com.canvify.test.service.inventory.InventoryService;
 import com.canvify.test.service.orderstatus.OrderStatusManager;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -315,4 +316,107 @@ public class PaymentServiceImpl implements PaymentService {
 
         return ApiResponse.success(payments);
     }
+
+    // -------------------------------------------------
+// VERIFY PAYMENT (FRONTEND CALLBACK)
+// -------------------------------------------------
+    @Override
+    @Transactional
+    public ApiResponse<?> verifyPayment(VerifyPaymentRequest req) {
+
+        log.info("==> [PAYMENT][VERIFY] Request received | orderId={} | razorpayOrderId={} | razorpayPaymentId={}",
+                req.getOrderId(), req.getRazorpayOrderId(), req.getRazorpayPaymentId());
+
+        if (req.getOrderId() == null) {
+            return ApiResponse.error("OrderId is required");
+        }
+
+        if (req.getRazorpayOrderId() == null || req.getRazorpayOrderId().isBlank()) {
+            return ApiResponse.error("razorpayOrderId is required");
+        }
+
+        if (req.getRazorpayPaymentId() == null || req.getRazorpayPaymentId().isBlank()) {
+            return ApiResponse.error("razorpayPaymentId is required");
+        }
+
+        if (req.getRazorpaySignature() == null || req.getRazorpaySignature().isBlank()) {
+            return ApiResponse.error("razorpaySignature is required");
+        }
+
+        Orders order = orderRepository.findByIdAndBitDeletedFlagFalse(req.getOrderId())
+                .orElseThrow(() -> new RuntimeException("Order not found"));
+
+        Payment payment = paymentRepository
+                .findByOrderIdAndBitDeletedFlagFalse(order.getId())
+                .stream()
+                .findFirst()
+                .orElseThrow(() -> new RuntimeException("Payment not found"));
+
+        log.info("[PAYMENT][VERIFY] Found payment | paymentId={} | status={} | providerOrderId={}",
+                payment.getId(), payment.getStatus(), payment.getProviderOrderId());
+
+        // Razorpay order id must match the stored providerOrderId
+        if (payment.getProviderOrderId() == null || !payment.getProviderOrderId().equals(req.getRazorpayOrderId())) {
+            log.error("[PAYMENT][VERIFY] Razorpay order mismatch | dbProviderOrderId={} | reqOrderId={}",
+                    payment.getProviderOrderId(), req.getRazorpayOrderId());
+            return ApiResponse.error("Payment reference mismatch");
+        }
+
+        PaymentProviderClient client = ctx.getBean("RAZORPAY", PaymentProviderClient.class);
+
+        // ✅ Verify signature (you must implement this method in Razorpay client)
+        boolean signatureOk = client.verifyPaymentSignature(
+                req.getRazorpayOrderId(),
+                req.getRazorpayPaymentId(),
+                req.getRazorpaySignature()
+        );
+
+        if (!signatureOk) {
+            log.error("[PAYMENT][VERIFY] Invalid Razorpay signature | orderId={} | paymentId={}",
+                    req.getRazorpayOrderId(), req.getRazorpayPaymentId());
+            return ApiResponse.error("Invalid payment signature");
+        }
+
+        // If webhook already marked success, just return success
+        if (payment.getStatus() == PaymentStatus.SUCCESS) {
+            log.info("<== [PAYMENT][VERIFY] Already SUCCESS | paymentId={} | orderId={}",
+                    payment.getId(), order.getId());
+            return ApiResponse.success("Payment already verified");
+        }
+
+        // If payment is already failed
+        if (payment.getStatus() == PaymentStatus.FAILED) {
+            log.warn("<== [PAYMENT][VERIFY] Payment already FAILED | paymentId={} | orderId={}",
+                    payment.getId(), order.getId());
+            return ApiResponse.error("Payment already failed");
+        }
+
+        // Mark as SUCCESS here (frontend verification)
+        payment.setProviderPaymentId(req.getRazorpayPaymentId());
+        payment.setStatus(PaymentStatus.SUCCESS);
+        payment.setPaymentDate(LocalDateTime.now());
+        paymentRepository.save(payment);
+
+        log.info("[PAYMENT][VERIFY] Payment marked SUCCESS via verify API | paymentId={}", payment.getId());
+
+        // Reduce stock + mark order PAID (same as webhook)
+        List<OrderItem> items = orderItemRepository.findByOrderIdAndBitDeletedFlagFalse(order.getId());
+
+        for (OrderItem item : items) {
+            inventoryService.reduceStock(
+                    item.getProductVariant().getId(),
+                    item.getQuantity(),
+                    "Order paid (verified)",
+                    order.getId()
+            );
+        }
+
+        orderStatusManager.changeStatus(order, OrderStatus.PAID, "Payment verified successfully");
+
+        log.info("<== [PAYMENT][VERIFY] Payment verified successfully | paymentId={} | orderId={}",
+                payment.getId(), order.getId());
+
+        return ApiResponse.success("Payment verified successfully");
+    }
+
 }
